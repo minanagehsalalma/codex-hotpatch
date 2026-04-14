@@ -13,7 +13,7 @@ on:
       min_version:
         description: Optional minimum stable version to include
         required: false
-        default: "0.118.0"
+        default: "0.119.0"
       target_set:
         description: fast=Linux only, full=Linux+Windows
         required: false
@@ -44,8 +44,8 @@ jobs:
             args+=(--versions "${{ github.event.inputs.versions }}")
           else
             args+=(--count "${{ github.event.inputs.count || '5' }}")
-            if [ -n "${{ github.event.inputs.min_version || '0.118.0' }}" ]; then
-              args+=(--min-version "${{ github.event.inputs.min_version || '0.118.0' }}")
+            if [ -n "${{ github.event.inputs.min_version || '0.119.0' }}" ]; then
+              args+=(--min-version "${{ github.event.inputs.min_version || '0.119.0' }}")
             fi
           fi
           args+=(--target-set "${{ github.event.inputs.target_set || 'fast' }}")
@@ -71,6 +71,12 @@ jobs:
           ref: ${{ matrix.codex_ref }}
           path: upstream
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux build dependencies
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcap-dev pkg-config
       - name: Apply maintained patch program
         shell: bash
         run: |

@@ -71,7 +71,7 @@ async function main() {
   const tarballPath = await npmPack(`@openai/codex@${normalizedVersion}-${target.packageVersionSuffix}`, tempRoot);
   const extractDir = path.join(tempRoot, "extract");
   await fs.mkdir(extractDir, { recursive: true });
-  await run("tar", ["-xf", tarballPath, "-C", extractDir]);
+  await run(resolveTarCommand(), ["-xf", tarballPath, "-C", extractDir]);
 
   const sourceBinaryPath = path.join(
     extractDir,
@@ -99,6 +99,13 @@ async function npmPack(spec, destinationDir) {
     throw new Error(`npm pack did not return a tarball name for ${spec}`);
   }
   return path.join(destinationDir, tarballName);
+}
+
+function resolveTarCommand() {
+  if (process.platform !== "win32") {
+    return "tar";
+  }
+  return path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
 }
 
 function run(command, args) {

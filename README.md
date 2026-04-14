@@ -103,7 +103,7 @@ The compatibility sweep resolves stable upstream releases automatically from npm
 Local helper:
 
 ```bash
-npm run versions:matrix -- --count 5 --min-version 0.118.0 --target-set fast
+npm run versions:matrix -- --count 5 --min-version 0.119.0 --target-set fast
 ```
 
 ## Dev
@@ -124,6 +124,7 @@ Contribution and maintainer workflow notes are in [CONTRIBUTING.md](CONTRIBUTING
 
 - Windows x64 is the only platform validated live so far
 - Linux x64 is wired into CI but still needs a publish-install verification pass on a real Linux machine
+- the automated compatibility floor currently starts at Codex `0.119.0`
 - the patcher currently targets official global Codex installs first, with `--path` for custom layouts
 - if no compatible overlay exists yet for a newly updated upstream Codex build, launch fails closed until CI publishes one
 

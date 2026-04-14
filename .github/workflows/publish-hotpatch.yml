@@ -120,6 +120,12 @@ jobs:
           ref: ${{ needs.detect-upstream.outputs.codex_ref }}
           path: upstream
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux build dependencies
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcap-dev pkg-config
       - name: Apply maintained hot-reload patch program
         shell: bash
         run: |
