@@ -38,6 +38,7 @@
     "patch:check": "node ./scripts/apply-maintained-patch.mjs --mode check",
     "manifest:generate": "node ./scripts/generate-manifest.mjs",
     "manifest:merge": "node ./scripts/merge-manifests.mjs",
+    "manifest:validate": "node ./scripts/validate-release-manifest.mjs",
     "upstream:detect": "node ./scripts/detect-upstream-release.mjs",
     "upstream:fetch": "node ./scripts/fetch-upstream-binary.mjs",
     "versions:matrix": "node ./scripts/resolve-version-matrix.mjs"
@@ -46,3 +47,5 @@
     "node": ">=20"
   }
 }
+
+

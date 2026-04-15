@@ -1,136 +1,162 @@
 # codex-multiaccount-patcher
 
-`codex-multiaccount-patcher` keeps a patched `codex` binary in front of the upstream install by owning a higher-precedence shim directory and a managed overlay cache.
+<p align="center">
+  <a href="https://github.com/minanagehsalalma/codex-multiaccount-patcher/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/minanagehsalalma/codex-multiaccount-patcher?display_name=tag"></a>
+  <a href="https://github.com/minanagehsalalma/codex-multiaccount-patcher/actions/workflows/publish-hotpatch.yml"><img alt="Publish" src="https://github.com/minanagehsalalma/codex-multiaccount-patcher/actions/workflows/publish-hotpatch.yml/badge.svg"></a>
+  <a href="https://github.com/minanagehsalalma/codex-multiaccount-patcher/actions/workflows/compatibility-sweep.yml"><img alt="Compatibility Sweep" src="https://github.com/minanagehsalalma/codex-multiaccount-patcher/actions/workflows/compatibility-sweep.yml/badge.svg"></a>
+</p>
 
-It exists for one specific problem: upstream Codex does not reliably pick up auth/account changes between turns. This project patches that behavior, validates it against focused regressions, and ships release artifacts that users can install without rebuilding Codex locally.
+`codex-multiaccount-patcher` keeps a patched `codex` binary in front of the upstream install by owning a higher-precedence shim directory and a managed overlay cache. The point is narrow and practical: Codex should pick up account/auth changes between turns without making you rebuild locally or restart the CLI.
 
-## What You Get
+## Flight Path
 
-- persistent `codex` shims on Windows and Linux
-- managed overlay binaries selected by exact upstream hash
-- launch-time refresh instead of fragile background watcher maintenance
-- multi-version compatibility sweeps in GitHub Actions
-- fail-closed behavior when no validated overlay exists for the installed upstream Codex build
+```mermaid
+flowchart TD
+    A[Installed upstream codex] --> B[patcher-owned shim]
+    B --> C[hash upstream binary]
+    C --> D{matching overlay in manifest?}
+    D -->|yes| E[reuse cached overlay]
+    D -->|no| F[fail closed]
+    E --> G[launch patched codex]
+    G --> H[reload auth snapshot between turns]
+    H --> I[switch accounts without restarting]
+```
 
-## Status
-
-- Windows x64 validated locally end to end
-- Linux x64 supported in the release and compatibility pipeline
-- latest fully validated upstream at the time of writing: [Codex 0.120.0 validation](latest-validation-0.120.0.md)
+That is the whole shape of the project: discover the real upstream binary, match it by exact hash, hydrate the right overlay, then launch the patched executable through a shim the patcher controls.
 
 ## Quickstart
 
-Prerequisites:
-
-- Node.js 20+
-- a normal `@openai/codex` install already on the machine
-
-Install the patcher from GitHub:
+1. Install Codex normally first. The patcher expects an existing global `@openai/codex` install.
+2. Install the patcher itself:
 
 ```bash
 npm install -g github:minanagehsalalma/codex-multiaccount-patcher
 ```
 
-Install the managed shims and pull the latest published manifest:
+3. Install the managed shims and pull the latest validated manifest:
 
 ```bash
 codex-multiaccount install
 ```
 
-Check what the patcher sees:
+4. Check what the patcher sees:
 
 ```bash
 codex-multiaccount status
 ```
 
-After install, plain `codex` should route through the managed shim automatically. The legacy alias `codex-hotpatch` still works during the transition.
+After that, plain `codex` should route through the managed shim automatically. The legacy alias `codex-hotpatch` still works during the transition.
+
+## What Happens When You Type `codex`
+
+```mermaid
+sequenceDiagram
+    participant You
+    participant Shim as codex shim
+    participant Patcher as codex-multiaccount
+    participant Manifest as active manifest
+    participant Cache as overlay cache
+    participant Patched as patched codex
+
+    You->>Shim: codex
+    Shim->>Patcher: launch -- [args]
+    Patcher->>Patcher: discover upstream binary + sha256
+    Patcher->>Manifest: find exact platform/hash match
+    Manifest-->>Patcher: overlay record
+    Patcher->>Cache: ensure overlay exists locally
+    Cache-->>Patcher: managed overlay path
+    Patcher->>Patched: exec patched binary
+    Patched-->>You: same Codex CLI, fixed auth reload behavior
+```
+
+<details>
+<summary><strong>What install writes to the machine</strong></summary>
+
+The patcher creates a managed home at `~/.codex-multiaccount`, stores overlay binaries under `overlays/`, writes the active manifest under `manifests/`, and places shims under `bin/`. It does not mutate the vendor Codex binary in place.
+
+</details>
+
+<details>
+<summary><strong>Why updates survive better than direct patching</strong></summary>
+
+When upstream Codex changes, the patcher hashes the new binary on the next launch and looks for a matching published overlay. If one exists, it switches cleanly. If one does not, it fails closed instead of silently launching a stale or mismatched binary.
+
+</details>
+
+<details>
+<summary><strong>Why the release pipeline matters</strong></summary>
+
+The runtime stays simple because the heavy work moves to CI: apply the maintained patch program, run the two focused regressions, build the overlays, generate the manifest, and only then publish a release that the CLI can consume.
+
+</details>
+
+## Release Pulse
+
+```mermaid
+flowchart LR
+    A[detect upstream release] --> B[apply maintained patch program]
+    B --> C[run focused regressions]
+    C --> D[build Windows and Linux overlays]
+    D --> E[generate manifest slices]
+    E --> F[validate release URLs]
+    F --> G[publish release]
+```
+
+The automation is designed to stop before publishing when the patch program drifts, a regression breaks, or the manifest points at the wrong repo/tag. That last check exists specifically to prevent the kind of release cleanup that makes a public release page look sloppy.
 
 ## Command Surface
 
-```text
-codex-multiaccount install [--overlay-path <path>] [--manifest <file-or-url>] [--path <upstream-binary>] [--force]
-codex-multiaccount status
-codex-multiaccount repair
-codex-multiaccount uninstall
-codex-multiaccount launch -- [codex args...]
-```
+| Command | Purpose |
+| --- | --- |
+| `codex-multiaccount install [--overlay-path <path>] [--manifest <file-or-url>] [--path <upstream-binary>] [--force]` | Install shims, discover upstream Codex, and materialize the matching overlay |
+| `codex-multiaccount status` | Show upstream hash, active overlay, manifest source, and install health |
+| `codex-multiaccount repair` | Re-resolve the manifest and refresh the managed runtime |
+| `codex-multiaccount uninstall` | Remove the managed runtime and restore normal `codex` launch behavior |
+| `codex-multiaccount launch -- [codex args...]` | Internal entrypoint used by the managed shims |
 
 Normal users should only need `install`, `status`, `repair`, and `uninstall`.
 
-## How It Works
+## Maintained Patch Model
 
-At launch time the patcher:
+The repo no longer depends on hand-refreshing one giant patch for every Codex release. The durable part is a small patch program plus two regressions that prove the behavior still works.
 
-1. discovers the current upstream Codex binary
-2. hashes it
-3. resolves the matching overlay from the active manifest
-4. refreshes the managed overlay cache if needed
-5. launches the patched binary through a patcher-owned shim
+| Layer | Role |
+| --- | --- |
+| [src/lib/maintained-patch.js](src/lib/maintained-patch.js) | Applies the runtime rewrite logic |
+| [patches/codex-hot-reload-tests.patch](patches/codex-hot-reload-tests.patch) | Carries the smaller fallback test changes |
+| `current_client_setup_reloads_auth_from_disk_between_turns` | Proves auth state reloads between turns |
+| `responses_websocket_reconnects_when_auth_snapshot_changes_between_turns` | Proves websocket auth reconnects when the snapshot changes |
 
-That means updates survive better than direct binary replacement. If upstream Codex changes, the next launch can select a new compatible overlay without mutating the vendor binary in place.
+## CI Strategy
 
-Architecture details are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+GitHub Actions stays the primary path because the repo already lives on GitHub and the workflow needs first-class Windows runners. The current setup optimizes for two lanes instead of one noisy everything-pipeline:
 
-## Maintenance Model
+- [publish-hotpatch.yml](.github/workflows/publish-hotpatch.yml) publishes validated overlays and `manifest.json`
+- [compatibility-sweep.yml](.github/workflows/compatibility-sweep.yml) pressure-tests multiple upstream versions without publishing
 
-This repo no longer depends on hand-refreshing one large patch file for every upstream release.
+The compatibility sweep can run in `fast` mode for Linux-only validation or `full` mode for Linux plus Windows. The current baseline starts at Codex `0.119.0`, and the latest fully validated upstream at the time of writing is [Codex 0.120.0 validation](latest-validation-0.120.0.md).
 
-The maintained patch is hybrid:
+A deeper note on CI speed and fallback providers is in [docs/CI-STRATEGY.md](docs/CI-STRATEGY.md).
 
-- scripted runtime rewrites in [src/lib/maintained-patch.js](src/lib/maintained-patch.js)
-- a small fallback test patch in [patches/codex-hot-reload-tests.patch](patches/codex-hot-reload-tests.patch)
-- two focused regressions that gate release artifacts
-
-The critical regressions are:
-
-- `current_client_setup_reloads_auth_from_disk_between_turns`
-- `responses_websocket_reconnects_when_auth_snapshot_changes_between_turns`
-
-## CI
-
-There are two distinct GitHub Actions workflows:
-
-- [publish-hotpatch.yml](.github/workflows/publish-hotpatch.yml)
-  Builds and publishes validated overlay assets plus `manifest.json`
-- [compatibility-sweep.yml](.github/workflows/compatibility-sweep.yml)
-  Runs the maintained patch program across multiple upstream Codex versions without publishing anything
-
-The compatibility sweep resolves stable upstream releases automatically from npm and can run in:
-
-- `fast` mode: Linux only
-- `full` mode: Linux and Windows
-
-Local helper:
-
-```bash
-npm run versions:matrix -- --count 5 --min-version 0.119.0 --target-set fast
-```
-
-## Dev
-
-Maintainer commands:
+## Maintainer Shortcuts
 
 ```bash
 npm test
 npm run patch:check -- --upstream-root <path>
 npm run patch:apply -- --upstream-root <path>
+npm run manifest:validate -- --manifest <path> --repo minanagehsalalma/codex-multiaccount-patcher --tag multiaccount-patcher-<version>
 npm run upstream:detect
 npm run upstream:fetch -- --codex-version <version> --platform <platform> --arch <arch> --output <path>
+npm run versions:matrix -- --count 5 --min-version 0.119.0 --target-set fast
 ```
 
-Contribution and maintainer workflow notes are in [CONTRIBUTING.md](CONTRIBUTING.md).
+## Reality Check
 
-## Limitations
+| Topic | Current state |
+| --- | --- |
+| Windows x64 | Validated live end to end |
+| Linux x64 | Supported in release + compatibility CI, still worth a real publish-install pass on Linux |
+| Provider portability | GitHub Actions is first-class, Cirrus is the most credible fallback, GitLab is possible but less attractive for a GitHub-native repo |
+| Unsupported upstream builds | Launch fails closed until CI publishes a matching overlay |
 
-- Windows x64 is the only platform validated live so far
-- Linux x64 is wired into CI but still needs a publish-install verification pass on a real Linux machine
-- the automated compatibility floor currently starts at Codex `0.119.0`
-- the patcher currently targets official global Codex installs first, with `--path` for custom layouts
-- if no compatible overlay exists yet for a newly updated upstream Codex build, launch fails closed until CI publishes one
-
-## Trust Files
-
-- [LICENSE](LICENSE)
-- [CONTRIBUTING.md](CONTRIBUTING.md)
-- [SECURITY.md](SECURITY.md)
-- [CHANGELOG.md](CHANGELOG.md)
+Trust files: [LICENSE](LICENSE), [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CHANGELOG.md](CHANGELOG.md).

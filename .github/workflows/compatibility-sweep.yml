@@ -75,6 +75,10 @@ jobs:
           ref: ${{ matrix.codex_ref }}
           path: upstream
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: sweep-${{ matrix.platform }}-${{ matrix.codex_version }}
+          cache-on-failure: "true"
       - name: Install Linux build dependencies
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -112,3 +116,4 @@ jobs:
             upstream/codex-rs/core/src/client_tests.rs
             upstream/codex-rs/core/tests/common/responses.rs
             upstream/codex-rs/core/tests/suite/client_websockets.rs
+

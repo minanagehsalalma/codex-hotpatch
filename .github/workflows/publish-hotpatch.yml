@@ -124,6 +124,10 @@ jobs:
           ref: ${{ needs.detect-upstream.outputs.codex_ref }}
           path: upstream
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: publish-${{ matrix.platform }}-${{ needs.detect-upstream.outputs.codex_version }}
+          cache-on-failure: "true"
       - name: Install Linux build dependencies
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -238,6 +242,8 @@ jobs:
           path: dist/overlays
       - name: Merge manifest slices
         run: node ./scripts/merge-manifests.mjs --input-dir dist/manifests --output dist/release/manifest.json
+      - name: Validate release manifest
+        run: node ./scripts/validate-release-manifest.mjs --manifest dist/release/manifest.json --repo ${{ github.repository }} --tag ${{ needs.detect-upstream.outputs.release_tag }}
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -245,3 +251,4 @@ jobs:
           files: |
             dist/release/manifest.json
             dist/overlays/*
+
