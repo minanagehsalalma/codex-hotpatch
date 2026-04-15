@@ -53,7 +53,7 @@ jobs:
           if [ -n "${{ github.event.inputs.release_tag }}" ]; then
             echo "release_tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
           else
-            echo "release_tag=hotpatch-$VERSION" >> "$GITHUB_OUTPUT"
+            echo "release_tag=multiaccount-patcher-$VERSION" >> "$GITHUB_OUTPUT"
           fi
 
   fetch-upstream:
