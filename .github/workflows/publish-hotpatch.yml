@@ -27,8 +27,8 @@ jobs:
       codex_ref: ${{ steps.detect.outputs.codex_ref }}
       release_tag: ${{ steps.detect.outputs.release_tag }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -74,8 +74,8 @@ jobs:
             executable_name: codex
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -89,7 +89,7 @@ jobs:
             --platform "${{ matrix.platform }}" \
             --arch "${{ matrix.arch }}" \
             --output "dist/upstream/${{ matrix.executable_name }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: upstream-${{ matrix.artifact_suffix }}
           path: dist/upstream/${{ matrix.executable_name }}
@@ -112,13 +112,13 @@ jobs:
             executable_name: codex
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           repository: openai/codex
           ref: ${{ needs.detect-upstream.outputs.codex_ref }}
@@ -154,13 +154,13 @@ jobs:
         run: |
           mkdir -p dist/overlay
           cp "upstream/codex-rs/target/release/${{ matrix.executable_name }}" "dist/overlay/codex-${{ needs.detect-upstream.outputs.codex_version }}-${{ matrix.artifact_suffix }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: overlay-${{ matrix.artifact_suffix }}
           path: dist/overlay/*
       - name: Upload debug bundle on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: debug-${{ matrix.artifact_suffix }}
           path: |
@@ -186,17 +186,17 @@ jobs:
             artifact_suffix: linux-x64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: upstream-${{ matrix.artifact_suffix }}
           path: artifacts/upstream
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: overlay-${{ matrix.artifact_suffix }}
           path: artifacts/overlay
@@ -215,7 +215,7 @@ jobs:
             --overlay-filename "$OVERLAY_NAME" \
             --overlay-url "https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/$OVERLAY_NAME" \
             --output "dist/manifests/${{ matrix.artifact_suffix }}.json"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: manifest-${{ matrix.artifact_suffix }}
           path: dist/manifests/${{ matrix.artifact_suffix }}.json
@@ -224,18 +224,18 @@ jobs:
     needs: [detect-upstream, build-manifests]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: manifest-*
           merge-multiple: true
           path: dist/manifests
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: overlay-*
           merge-multiple: true
@@ -245,10 +245,11 @@ jobs:
       - name: Validate release manifest
         run: node ./scripts/validate-release-manifest.mjs --manifest dist/release/manifest.json --repo ${{ github.repository }} --tag ${{ needs.detect-upstream.outputs.release_tag }}
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.detect-upstream.outputs.release_tag }}
           files: |
             dist/release/manifest.json
             dist/overlays/*
+
 

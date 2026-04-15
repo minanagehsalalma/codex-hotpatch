@@ -34,8 +34,8 @@ jobs:
     outputs:
       matrix: ${{ steps.resolve.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -63,13 +63,13 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.resolve-matrix.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           repository: openai/codex
           ref: ${{ matrix.codex_ref }}
@@ -107,7 +107,7 @@ jobs:
           ./target/release/${{ matrix.executable_name }} --version
       - name: Upload compatibility debug bundle
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: compatibility-${{ matrix.codex_version }}-${{ matrix.artifact_suffix }}
           path: |
@@ -116,4 +116,5 @@ jobs:
             upstream/codex-rs/core/src/client_tests.rs
             upstream/codex-rs/core/tests/common/responses.rs
             upstream/codex-rs/core/tests/suite/client_websockets.rs
+
 
