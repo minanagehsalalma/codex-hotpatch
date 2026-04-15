@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { LEGACY_CLI_NAME, PRIMARY_CLI_NAME } from "./lib/constants.js";
 import {
   commandInstall,
   commandLaunch,
@@ -14,7 +15,7 @@ import {
 } from "./lib/commands.js";
 
 function usage() {
-  process.stdout.write(`codex-hotpatch
+  process.stdout.write(`${PRIMARY_CLI_NAME} (alias: ${LEGACY_CLI_NAME})
 
 Commands:
   install [--overlay-path <path>] [--manifest <file-or-url>] [--path <upstream-binary>] [--force]

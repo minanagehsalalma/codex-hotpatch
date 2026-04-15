@@ -10,14 +10,23 @@ import {
   uniquePaths,
 } from "./util.js";
 
-const PROFILE_BLOCK_START = "# >>> codex-hotpatch >>>";
-const PROFILE_BLOCK_END = "# <<< codex-hotpatch <<<";
+const PROFILE_BLOCK_START = "# >>> codex-multiaccount >>>";
+const PROFILE_BLOCK_END = "# <<< codex-multiaccount <<<";
+const LEGACY_PROFILE_BLOCK_START = "# >>> codex-hotpatch >>>";
+const LEGACY_PROFILE_BLOCK_END = "# <<< codex-hotpatch <<<";
 
-export async function ensureManagedBinOnUserPath(context, managedBinDir) {
+export async function ensureManagedBinOnUserPath(context, managedBinDir, obsoleteManagedBinDirs = []) {
   if (context.platform === "win32") {
     const current = await getWindowsUserPath();
     let entries = normalizePathList(current, "win32");
-    entries = [managedBinDir, ...entries.filter((entry) => entry.toLowerCase() !== managedBinDir.toLowerCase())];
+    const obsoleteEntries = new Set(obsoleteManagedBinDirs.map((entry) => entry.toLowerCase()));
+    entries = [
+      managedBinDir,
+      ...entries.filter((entry) => {
+        const normalized = entry.toLowerCase();
+        return normalized !== managedBinDir.toLowerCase() && !obsoleteEntries.has(normalized);
+      }),
+    ];
     const nextValue = renderPathList(uniquePaths(entries), "win32");
     await setWindowsUserPath(nextValue);
     process.env.Path = nextValue;
@@ -35,10 +44,12 @@ export async function ensureManagedBinOnUserPath(context, managedBinDir) {
   return { changed: nextValue !== current, value: nextValue };
 }
 
-export async function removeManagedBinFromUserPath(context, managedBinDir) {
+export async function removeManagedBinFromUserPath(context, managedBinDirs) {
+  const targets = Array.isArray(managedBinDirs) ? managedBinDirs : [managedBinDirs];
   if (context.platform === "win32") {
     const current = await getWindowsUserPath();
-    const entries = normalizePathList(current, "win32").filter((entry) => entry.toLowerCase() !== managedBinDir.toLowerCase());
+    const lowerTargets = new Set(targets.map((entry) => entry.toLowerCase()));
+    const entries = normalizePathList(current, "win32").filter((entry) => !lowerTargets.has(entry.toLowerCase()));
     const nextValue = renderPathList(uniquePaths(entries), "win32");
     await setWindowsUserPath(nextValue);
     process.env.Path = nextValue;
@@ -51,7 +62,8 @@ export async function removeManagedBinFromUserPath(context, managedBinDir) {
   if (nextValue !== current) {
     await fs.writeFile(profilePath, nextValue, "utf8");
   }
-  const entries = normalizePathList(process.env.PATH ?? "", context.platform).filter((entry) => entry !== managedBinDir);
+  const targetSet = new Set(targets);
+  const entries = normalizePathList(process.env.PATH ?? "", context.platform).filter((entry) => !targetSet.has(entry));
   process.env.PATH = renderPathList(uniquePaths(entries), context.platform);
   return { changed: nextValue !== current, value: nextValue };
 }
@@ -104,10 +116,17 @@ export function upsertManagedProfileBlock(current, managedBinDir) {
 }
 
 export function removeManagedProfileBlock(current) {
-  const escapedStart = PROFILE_BLOCK_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const escapedEnd = PROFILE_BLOCK_END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`${escapedStart}[\\s\\S]*?${escapedEnd}\\n?`, "g");
-  return current.replace(pattern, "").replace(/\n{3,}/g, "\n\n");
+  let nextValue = current;
+  for (const [start, end] of [
+    [PROFILE_BLOCK_START, PROFILE_BLOCK_END],
+    [LEGACY_PROFILE_BLOCK_START, LEGACY_PROFILE_BLOCK_END],
+  ]) {
+    const escapedStart = start.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedEnd = end.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`${escapedStart}[\\s\\S]*?${escapedEnd}\\n?`, "g");
+    nextValue = nextValue.replace(pattern, "");
+  }
+  return nextValue.replace(/\n{3,}/g, "\n\n");
 }
 
 function escapePosixPath(value) {

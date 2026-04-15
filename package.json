@@ -1,22 +1,23 @@
 {
-  "name": "codex-hotpatch",
+  "name": "codex-multiaccount-patcher",
   "version": "0.1.0",
-  "description": "Persistent shim and overlay patcher for Codex auth hot-reload across upstream releases.",
+  "description": "Persistent multi-account patcher for Codex auth hot-reload across upstream releases.",
   "license": "Apache-2.0",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/minanagehsalalma/codex-hotpatch.git"
+    "url": "git+https://github.com/minanagehsalalma/codex-multiaccount-patcher.git"
   },
-  "homepage": "https://github.com/minanagehsalalma/codex-hotpatch",
+  "homepage": "https://github.com/minanagehsalalma/codex-multiaccount-patcher",
   "bugs": {
-    "url": "https://github.com/minanagehsalalma/codex-hotpatch/issues"
+    "url": "https://github.com/minanagehsalalma/codex-multiaccount-patcher/issues"
   },
   "keywords": [
     "codex",
     "openai",
     "patcher",
-    "hotpatch",
+    "multiaccount",
+    "account-switching",
     "cli",
     "windows",
     "linux"
@@ -28,6 +29,7 @@
     "CHANGELOG.md"
   ],
   "bin": {
+    "codex-multiaccount": "./src/cli.js",
     "codex-hotpatch": "./src/cli.js"
   },
   "scripts": {

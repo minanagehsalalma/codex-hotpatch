@@ -67,7 +67,7 @@ async function main() {
   }
 
   const normalizedVersion = options.codexVersion.replace(/^rust-v/i, "").replace(/^v/i, "");
-  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-hotpatch-upstream-"));
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-multiaccount-upstream-"));
   const tarballPath = await npmPack(`@openai/codex@${normalizedVersion}-${target.packageVersionSuffix}`, tempRoot);
   const extractDir = path.join(tempRoot, "extract");
   await fs.mkdir(extractDir, { recursive: true });

@@ -1,6 +1,6 @@
-# codex-hotpatch
+# codex-multiaccount-patcher
 
-`codex-hotpatch` keeps a patched `codex` binary in front of the upstream install by owning a higher-precedence shim directory and a managed overlay cache.
+`codex-multiaccount-patcher` keeps a patched `codex` binary in front of the upstream install by owning a higher-precedence shim directory and a managed overlay cache.
 
 It exists for one specific problem: upstream Codex does not reliably pick up auth/account changes between turns. This project patches that behavior, validates it against focused regressions, and ships release artifacts that users can install without rebuilding Codex locally.
 
@@ -28,31 +28,31 @@ Prerequisites:
 Install the patcher from GitHub:
 
 ```bash
-npm install -g github:minanagehsalalma/codex-hotpatch
+npm install -g github:minanagehsalalma/codex-multiaccount-patcher
 ```
 
 Install the managed shims and pull the latest published manifest:
 
 ```bash
-codex-hotpatch install
+codex-multiaccount install
 ```
 
 Check what the patcher sees:
 
 ```bash
-codex-hotpatch status
+codex-multiaccount status
 ```
 
-After install, plain `codex` should route through the managed shim automatically.
+After install, plain `codex` should route through the managed shim automatically. The legacy alias `codex-hotpatch` still works during the transition.
 
 ## Command Surface
 
 ```text
-codex-hotpatch install [--overlay-path <path>] [--manifest <file-or-url>] [--path <upstream-binary>] [--force]
-codex-hotpatch status
-codex-hotpatch repair
-codex-hotpatch uninstall
-codex-hotpatch launch -- [codex args...]
+codex-multiaccount install [--overlay-path <path>] [--manifest <file-or-url>] [--path <upstream-binary>] [--force]
+codex-multiaccount status
+codex-multiaccount repair
+codex-multiaccount uninstall
+codex-multiaccount launch -- [codex args...]
 ```
 
 Normal users should only need `install`, `status`, `repair`, and `uninstall`.

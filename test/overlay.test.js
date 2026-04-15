@@ -7,7 +7,7 @@ import { promises as fs } from "node:fs";
 import { ensureManagedOverlay, resolveManagedOverlayPath } from "../src/lib/overlay.js";
 
 test("ensureManagedOverlay copies a local overlay into the managed cache", async () => {
-  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-hotpatch-overlay-"));
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-multiaccount-overlay-"));
   const sourcePath = path.join(tempRoot, "patched.exe");
   const dirs = { overlaysDir: path.join(tempRoot, "managed") };
   await fs.writeFile(sourcePath, "patched-binary", "utf8");

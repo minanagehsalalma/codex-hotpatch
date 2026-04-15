@@ -2,20 +2,20 @@
 
 ## Runtime Model
 
-`codex-hotpatch` is intentionally simple at runtime:
+`codex-multiaccount-patcher` is intentionally simple at runtime:
 
-1. patcher-owned shims live in `~/.codex-hotpatch/bin`
-2. those shims forward into `codex-hotpatch launch -- ...`
+1. patcher-owned shims live in `~/.codex-multiaccount/bin`
+2. those shims forward into `codex-multiaccount launch -- ...`
 3. launch discovers the current upstream Codex vendor binary
 4. the upstream binary hash is matched against the active manifest
-5. the matching overlay is materialized into `~/.codex-hotpatch/overlays/<hash>/`
+5. the matching overlay is materialized into `~/.codex-multiaccount/overlays/<hash>/`
 6. the overlay binary is executed with the upstream helper `path/` entries preserved
 
 The patcher never needs to replace the live upstream vendor binary in place.
 
 ## State
 
-Managed state lives under `~/.codex-hotpatch/`:
+Managed state lives under `~/.codex-multiaccount/`:
 
 - `bin/` managed shims
 - `manifests/active.json` current manifest cache

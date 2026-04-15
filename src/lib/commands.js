@@ -1,7 +1,8 @@
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 
-import { appDirs, defaultManifestUrl } from "./constants.js";
+import { appDirs, defaultManifestUrl, PRIMARY_CLI_NAME } from "./constants.js";
 import { discoverCodexInstall, autoDetectOverlayPath } from "./codex-discovery.js";
 import {
   createLocalManifestRecord,
@@ -15,7 +16,7 @@ import { ensureManagedOverlay } from "./overlay.js";
 import { ensureManagedBinOnUserPath, removeManagedBinFromUserPath } from "./path-env.js";
 import { deleteState, loadState, saveState } from "./state.js";
 import { removeManagedShims, writeManagedShims } from "./shims.js";
-import { ensureDir, pathExists, sha256File } from "./util.js";
+import { ensureDir, pathExists, readJson, sha256File, writeJson } from "./util.js";
 
 function splitWindowsPathList(value) {
   return String(value ?? "")
@@ -66,6 +67,7 @@ function readWindowsPath(scope) {
 
 export async function commandInstall(context, options) {
   const dirs = appDirs(context.homeDir);
+  await migrateLegacyRuntime(dirs);
   await ensureDir(dirs.rootDir);
   await ensureDir(dirs.overlaysDir);
   await ensureDir(dirs.manifestsDir);
@@ -137,7 +139,7 @@ export async function commandInstall(context, options) {
   await saveManifest(dirs.manifestPath, manifestRecords);
 
   await writeManagedShims(context, dirs.binDir);
-  await ensureManagedBinOnUserPath(context, dirs.binDir);
+  await ensureManagedBinOnUserPath(context, dirs.binDir, [dirs.legacy.binDir]);
 
   const state = {
     installedAt: new Date().toISOString(),
@@ -155,14 +157,13 @@ export async function commandInstall(context, options) {
   };
   await saveState(dirs.statePath, state);
 
-  process.stdout.write(`Installed hotpatcher overlay for Codex ${upstream.version ?? "unknown"}.\n`);
+  process.stdout.write(`Installed multiaccount overlay for Codex ${upstream.version ?? "unknown"}.\n`);
   process.stdout.write(`Managed shim dir: ${dirs.binDir}\n`);
   process.stdout.write(`Managed overlay: ${overlay.managedOverlayPath}\n`);
 }
 
 export async function commandStatus(context) {
-  const dirs = appDirs(context.homeDir);
-  const state = await loadState(dirs.statePath);
+  const { dirs, state } = await loadInstalledRuntime(appDirs(context.homeDir));
   if (!state) {
     process.stdout.write("status: not installed\n");
     return;
@@ -189,10 +190,9 @@ export async function commandStatus(context) {
 }
 
 export async function commandRepair(context) {
-  const dirs = appDirs(context.homeDir);
-  const state = await loadState(dirs.statePath);
+  const { dirs, state } = await loadInstalledRuntime(appDirs(context.homeDir));
   if (!state) {
-    throw new Error("hotpatcher is not installed");
+    throw new Error("multiaccount patcher is not installed");
   }
 
   await ensureDir(dirs.rootDir);
@@ -215,30 +215,28 @@ export async function commandRepair(context) {
   await updateStateForRecord(dirs, state, upstream, upstreamSha256, hydratedRecord, overlay);
 
   await writeManagedShims(context, dirs.binDir);
-  await ensureManagedBinOnUserPath(context, dirs.binDir);
+  await ensureManagedBinOnUserPath(context, dirs.binDir, [dirs.legacy.binDir]);
   process.stdout.write("repair: complete\n");
 }
 
 export async function commandUninstall(context) {
-  const dirs = appDirs(context.homeDir);
-  const state = await loadState(dirs.statePath);
+  const { dirs, state } = await loadInstalledRuntime(appDirs(context.homeDir));
   if (!state) {
     process.stdout.write("uninstall: nothing to do\n");
     return;
   }
 
   await removeManagedShims(context, dirs.binDir);
-  await removeManagedBinFromUserPath(context, dirs.binDir);
+  await removeManagedBinFromUserPath(context, [dirs.binDir, dirs.legacy.binDir]);
   await deleteManifest(state.manifestPath);
   await deleteState(dirs.statePath);
   process.stdout.write("uninstall: complete\n");
 }
 
 export async function commandLaunch(context, passthroughArgs) {
-  const dirs = appDirs(context.homeDir);
-  const state = await loadState(dirs.statePath);
+  const { dirs, state } = await loadInstalledRuntime(appDirs(context.homeDir));
   if (!state) {
-    throw new Error("hotpatcher is not installed");
+    throw new Error("multiaccount patcher is not installed");
   }
 
   const upstream = await discoverCurrentUpstream(context, state);
@@ -247,7 +245,7 @@ export async function commandLaunch(context, passthroughArgs) {
   const { record, manifestRecords } = await resolveRecord(context, dirs, state, manifest, upstream, upstreamSha256);
   if (!record) {
     throw new Error(
-      `current upstream Codex hash is unsupported. Expected a manifest record for ${upstreamSha256}. Run codex-hotpatch install again with a compatible overlay.`,
+      `current upstream Codex hash is unsupported. Expected a manifest record for ${upstreamSha256}. Run ${PRIMARY_CLI_NAME} install again with a compatible overlay.`,
     );
   }
   const overlay = await ensureManagedOverlay(context, dirs, record);
@@ -344,6 +342,70 @@ async function loadCachedManifest(manifestPath) {
     return null;
   }
   return loadManifest(manifestPath);
+}
+
+async function loadInstalledRuntime(dirs) {
+  await migrateLegacyRuntime(dirs);
+
+  const primaryState = await loadState(dirs.statePath);
+  if (primaryState) {
+    return { dirs, state: primaryState };
+  }
+
+  const legacyState = await loadState(dirs.legacy.statePath);
+  if (!legacyState) {
+    return { dirs, state: null };
+  }
+
+  return {
+    dirs: {
+      ...dirs,
+      rootDir: dirs.legacy.rootDir,
+      binDir: dirs.legacy.binDir,
+      overlaysDir: dirs.legacy.overlaysDir,
+      manifestsDir: dirs.legacy.manifestsDir,
+      statePath: dirs.legacy.statePath,
+      manifestPath: dirs.legacy.manifestPath,
+    },
+    state: legacyState,
+  };
+}
+
+async function migrateLegacyRuntime(dirs) {
+  if (await pathExists(dirs.statePath)) {
+    return;
+  }
+  if (!(await pathExists(dirs.legacy.rootDir)) || (await pathExists(dirs.rootDir))) {
+    return;
+  }
+
+  await fs.rename(dirs.legacy.rootDir, dirs.rootDir);
+
+  if (await pathExists(dirs.statePath)) {
+    const state = await loadState(dirs.statePath);
+    if (state) {
+      await saveState(dirs.statePath, rewritePathPrefixes(state, dirs.legacy.rootDir, dirs.rootDir));
+    }
+  }
+  if (await pathExists(dirs.manifestPath)) {
+    const manifest = await readJson(dirs.manifestPath);
+    await writeJson(dirs.manifestPath, rewritePathPrefixes(manifest, dirs.legacy.rootDir, dirs.rootDir));
+  }
+}
+
+function rewritePathPrefixes(value, fromPrefix, toPrefix) {
+  if (typeof value === "string") {
+    return value.startsWith(fromPrefix) ? path.join(toPrefix, path.relative(fromPrefix, value)) : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => rewritePathPrefixes(item, fromPrefix, toPrefix));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, rewritePathPrefixes(item, fromPrefix, toPrefix)]),
+    );
+  }
+  return value;
 }
 
 async function updateStateForRecord(dirs, state, upstream, upstreamSha256, record, overlay) {

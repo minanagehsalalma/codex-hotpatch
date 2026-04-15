@@ -42,7 +42,7 @@ async function main() {
 
   const response = await fetch(`https://api.github.com/repos/${options.repo}/releases/latest`, {
     headers: {
-      "User-Agent": "codex-hotpatch",
+      "User-Agent": "codex-multiaccount-patcher",
       Accept: "application/vnd.github+json",
       ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
     },
@@ -71,7 +71,7 @@ async function main() {
 async function fetchLatestVersionFromNpm() {
   const response = await fetch("https://registry.npmjs.org/@openai/codex/latest", {
     headers: {
-      "User-Agent": "codex-hotpatch",
+      "User-Agent": "codex-multiaccount-patcher",
       Accept: "application/json",
     },
   });

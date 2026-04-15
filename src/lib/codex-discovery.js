@@ -122,6 +122,7 @@ export async function autoDetectOverlayPath(context, upstreamBinaryPath) {
       const isLikelyOverlay =
         entry.name === executableName ||
         entry.name.startsWith("codex-") ||
+        entry.name.includes("multiaccount") ||
         entry.name.includes("hotpatch") ||
         entry.name.includes("patched");
       if (!isLikelyOverlay || equalsPath(candidate, upstreamBinaryPath)) {

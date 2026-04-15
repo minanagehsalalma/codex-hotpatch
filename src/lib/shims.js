@@ -1,6 +1,7 @@
 import path from "node:path";
 import { promises as fs } from "node:fs";
 
+import { LEGACY_CLI_NAME, PRIMARY_CLI_NAME } from "./constants.js";
 import { ensureDir, pathExists } from "./util.js";
 
 export async function writeManagedShims(context, managedBinDir) {
@@ -20,12 +21,22 @@ export async function writeManagedShims(context, managedBinDir) {
       "utf8",
     );
     await fs.writeFile(
-      path.join(managedBinDir, "codex-hotpatch.cmd"),
+      path.join(managedBinDir, `${PRIMARY_CLI_NAME}.cmd`),
       renderCmdShim(nodePath, cliPath, []),
       "utf8",
     );
     await fs.writeFile(
-      path.join(managedBinDir, "codex-hotpatch.ps1"),
+      path.join(managedBinDir, `${PRIMARY_CLI_NAME}.ps1`),
+      renderPs1Shim(nodePath, cliPath, []),
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(managedBinDir, `${LEGACY_CLI_NAME}.cmd`),
+      renderCmdShim(nodePath, cliPath, []),
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(managedBinDir, `${LEGACY_CLI_NAME}.ps1`),
       renderPs1Shim(nodePath, cliPath, []),
       "utf8",
     );
@@ -33,18 +44,28 @@ export async function writeManagedShims(context, managedBinDir) {
   }
 
   const codexShimPath = path.join(managedBinDir, "codex");
-  const patcherShimPath = path.join(managedBinDir, "codex-hotpatch");
+  const patcherShimPath = path.join(managedBinDir, PRIMARY_CLI_NAME);
+  const legacyPatcherShimPath = path.join(managedBinDir, LEGACY_CLI_NAME);
   await fs.writeFile(codexShimPath, renderShellShim(nodePath, cliPath, ["launch", "--"]), "utf8");
   await fs.writeFile(patcherShimPath, renderShellShim(nodePath, cliPath, []), "utf8");
+  await fs.writeFile(legacyPatcherShimPath, renderShellShim(nodePath, cliPath, []), "utf8");
   await fs.chmod(codexShimPath, 0o755);
   await fs.chmod(patcherShimPath, 0o755);
+  await fs.chmod(legacyPatcherShimPath, 0o755);
 }
 
 export async function removeManagedShims(context, managedBinDir) {
   const names =
     context.platform === "win32"
-      ? ["codex.cmd", "codex.ps1", "codex-hotpatch.cmd", "codex-hotpatch.ps1"]
-      : ["codex", "codex-hotpatch"];
+      ? [
+          "codex.cmd",
+          "codex.ps1",
+          `${PRIMARY_CLI_NAME}.cmd`,
+          `${PRIMARY_CLI_NAME}.ps1`,
+          `${LEGACY_CLI_NAME}.cmd`,
+          `${LEGACY_CLI_NAME}.ps1`,
+        ]
+      : ["codex", PRIMARY_CLI_NAME, LEGACY_CLI_NAME];
   for (const name of names) {
     const target = path.join(managedBinDir, name);
     if (await pathExists(target)) {

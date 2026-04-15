@@ -7,7 +7,7 @@ import { promises as fs } from "node:fs";
 import { autoDetectOverlayPath } from "../src/lib/codex-discovery.js";
 
 test("autoDetectOverlayPath prefers the newest generic overlay candidate", async () => {
-  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-hotpatch-discovery-"));
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-multiaccount-discovery-"));
   const projectRoot = path.join(tempRoot, "project");
   const homeDir = path.join(tempRoot, "home");
   const cwd = path.join(tempRoot, "cwd");
@@ -16,7 +16,7 @@ test("autoDetectOverlayPath prefers the newest generic overlay candidate", async
   await fs.mkdir(path.join(cwd, "dist", "overlay"), { recursive: true });
 
   const olderOverlay = path.join(homeDir, "codex-patched", "codex-patched.exe");
-  const newerOverlay = path.join(cwd, "dist", "overlay", "codex-0.120.0-hotpatch.exe");
+  const newerOverlay = path.join(cwd, "dist", "overlay", "codex-0.120.0-win32-x64.exe");
   const upstreamBinaryPath = path.join(tempRoot, "upstream", "codex.exe");
   await fs.mkdir(path.dirname(upstreamBinaryPath), { recursive: true });
   await fs.writeFile(olderOverlay, "older", "utf8");
@@ -42,7 +42,7 @@ test("autoDetectOverlayPath prefers the newest generic overlay candidate", async
 });
 
 test("autoDetectOverlayPath ignores the upstream binary itself", async () => {
-  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-hotpatch-discovery-"));
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-multiaccount-discovery-"));
   const projectRoot = path.join(tempRoot, "project");
   const upstreamDir = path.join(projectRoot, "dist", "overlay");
   await fs.mkdir(upstreamDir, { recursive: true });

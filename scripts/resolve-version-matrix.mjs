@@ -70,7 +70,7 @@ async function main() {
 async function fetchAllPublishedVersions() {
   const response = await fetch("https://registry.npmjs.org/@openai/codex", {
     headers: {
-      "User-Agent": "codex-hotpatch",
+      "User-Agent": "codex-multiaccount-patcher",
       Accept: "application/json",
     },
   });
