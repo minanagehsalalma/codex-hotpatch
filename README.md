@@ -1,4 +1,4 @@
-# codex-multiaccount-patcher
+<h1 align="center">codex-multiaccount-patcher</h1>
 
 <div align="center">
   <p>
