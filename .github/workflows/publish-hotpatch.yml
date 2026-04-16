@@ -1,6 +1,16 @@
 name: publish-hotpatch
 
 on:
+  workflow_call:
+    inputs:
+      codex_version:
+        description: Upstream Codex version to package
+        required: false
+        type: string
+      release_tag:
+        description: Release tag for the hotpatch assets
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       codex_version:
@@ -9,8 +19,6 @@ on:
       release_tag:
         description: Release tag for the hotpatch assets
         required: true
-  schedule:
-    - cron: "17 */6 * * *"
 
 permissions:
   contents: write
@@ -36,25 +44,16 @@ jobs:
       - id: detect
         shell: bash
         run: |
-          REF="${{ github.event.inputs.codex_version }}"
-          VERSION="${{ github.event.inputs.codex_version }}"
-          if [ -z "$REF" ]; then
-            REF="$(node ./scripts/detect-upstream-release.mjs --field tagName)"
-            VERSION="$(node ./scripts/detect-upstream-release.mjs --field normalizedVersion)"
-          else
-            if [[ "$REF" != rust-v* && "$REF" != v* ]]; then
-              REF="rust-v$REF"
-            fi
-            VERSION="${REF#rust-v}"
-            VERSION="${VERSION#v}"
+          TARGET_INPUT="${{ inputs.codex_version }}"
+          if [ -z "$TARGET_INPUT" ]; then
+            TARGET_INPUT="$(node ./scripts/detect-upstream-release.mjs --field tagName)"
           fi
+          REF="$(node ./scripts/resolve-release-target.mjs --version "$TARGET_INPUT" --field codexRef)"
+          VERSION="$(node ./scripts/resolve-release-target.mjs --version "$TARGET_INPUT" --field codexVersion)"
           echo "codex_ref=$REF" >> "$GITHUB_OUTPUT"
           echo "codex_version=$VERSION" >> "$GITHUB_OUTPUT"
-          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
-            echo "release_tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "release_tag=multiaccount-patcher-$VERSION" >> "$GITHUB_OUTPUT"
-          fi
+          RELEASE_TAG="$(node ./scripts/resolve-release-target.mjs --version "$TARGET_INPUT" --release-tag "${{ inputs.release_tag }}" --field releaseTag)"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
   fetch-upstream:
     needs: detect-upstream
@@ -259,4 +258,3 @@ jobs:
           files: |
             dist/release/manifest.json
             dist/overlays/*
-

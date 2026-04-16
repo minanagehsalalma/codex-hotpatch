@@ -1,0 +1,235 @@
+name: auto-maintain-upstream
+
+on:
+  workflow_dispatch:
+    inputs:
+      codex_version:
+        description: Optional upstream Codex version or tag to target
+        required: false
+        type: string
+      release_tag:
+        description: Optional patch release tag override
+        required: false
+        type: string
+      assign_copilot:
+        description: Attempt to assign the fallback issue to Copilot cloud agent
+        required: false
+        default: true
+        type: boolean
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: auto-maintain-upstream-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  detect-target:
+    runs-on: ubuntu-latest
+    outputs:
+      codex_version: ${{ steps.resolve.outputs.codex_version }}
+      codex_ref: ${{ steps.resolve.outputs.codex_ref }}
+      release_tag: ${{ steps.resolve.outputs.release_tag }}
+      issue_title: ${{ steps.resolve.outputs.issue_title }}
+      assign_copilot: ${{ steps.resolve.outputs.assign_copilot }}
+      release_exists: ${{ steps.release.outputs.release_exists }}
+      should_publish: ${{ steps.release.outputs.should_publish }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - id: resolve
+        shell: bash
+        run: |
+          TARGET_INPUT="${{ inputs.codex_version }}"
+          if [ -z "$TARGET_INPUT" ]; then
+            TARGET_INPUT="$(node ./scripts/detect-upstream-release.mjs --field tagName)"
+          fi
+          REF="$(node ./scripts/resolve-release-target.mjs --version "$TARGET_INPUT" --field codexRef)"
+          VERSION="$(node ./scripts/resolve-release-target.mjs --version "$TARGET_INPUT" --field codexVersion)"
+          RELEASE_TAG="$(node ./scripts/resolve-release-target.mjs --version "$TARGET_INPUT" --release-tag "${{ inputs.release_tag }}" --field releaseTag)"
+          ISSUE_TITLE="$(node ./scripts/resolve-release-target.mjs --version "$TARGET_INPUT" --field issueTitle)"
+          ASSIGN_COPILOT="true"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.assign_copilot }}" = "false" ]; then
+            ASSIGN_COPILOT="false"
+          fi
+          {
+            echo "codex_ref=$REF"
+            echo "codex_version=$VERSION"
+            echo "release_tag=$RELEASE_TAG"
+            echo "issue_title=$ISSUE_TITLE"
+            echo "assign_copilot=$ASSIGN_COPILOT"
+          } >> "$GITHUB_OUTPUT"
+      - id: release
+        uses: actions/github-script@v8
+        env:
+          RELEASE_TAG: ${{ steps.resolve.outputs.release_tag }}
+        with:
+          script: |
+            try {
+              await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag: process.env.RELEASE_TAG,
+              });
+              core.setOutput("release_exists", "true");
+              core.setOutput("should_publish", "false");
+            } catch (error) {
+              if (error.status === 404) {
+                core.setOutput("release_exists", "false");
+                core.setOutput("should_publish", "true");
+                return;
+              }
+              throw error;
+            }
+
+  publish:
+    needs: detect-target
+    if: needs.detect-target.outputs.should_publish == 'true'
+    uses: ./.github/workflows/publish-hotpatch.yml
+    with:
+      codex_version: ${{ needs.detect-target.outputs.codex_version }}
+      release_tag: ${{ needs.detect-target.outputs.release_tag }}
+    secrets: inherit
+
+  close-tracked-issue:
+    needs: [detect-target, publish]
+    if: always() && (needs.detect-target.outputs.release_exists == 'true' || needs.publish.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v8
+        env:
+          ISSUE_TITLE: ${{ needs.detect-target.outputs.issue_title }}
+          RELEASE_TAG: ${{ needs.detect-target.outputs.release_tag }}
+          VERSION: ${{ needs.detect-target.outputs.codex_version }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const title = process.env.ISSUE_TITLE;
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: "open",
+              per_page: 100,
+            });
+            const tracked = issues.find((issue) => issue.title === title);
+            if (!tracked) {
+              core.info(`No open issue found for ${title}`);
+              return;
+            }
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: tracked.number,
+              body: [
+                `Closing automatically because patch release \`${process.env.RELEASE_TAG}\` is now available for Codex \`${process.env.VERSION}\`.`,
+                ``,
+                `Run: ${process.env.RUN_URL}`,
+              ].join("\n"),
+            });
+            await github.rest.issues.update({
+              owner,
+              repo,
+              issue_number: tracked.number,
+              state: "closed",
+            });
+
+  open-failure-issue:
+    needs: [detect-target, publish]
+    if: always() && needs.detect-target.outputs.should_publish == 'true' && needs.publish.result != 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v8
+        env:
+          ISSUE_TITLE: ${{ needs.detect-target.outputs.issue_title }}
+          VERSION: ${{ needs.detect-target.outputs.codex_version }}
+          CODEX_REF: ${{ needs.detect-target.outputs.codex_ref }}
+          RELEASE_TAG: ${{ needs.detect-target.outputs.release_tag }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+          ASSIGN_COPILOT: ${{ needs.detect-target.outputs.assign_copilot }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const title = process.env.ISSUE_TITLE;
+            const assignCopilot = process.env.ASSIGN_COPILOT === "true";
+            const body = [
+              `<!-- upstream-codex-version:${process.env.VERSION} -->`,
+              `## Automated upstream maintenance failed`,
+              ``,
+              `The unattended maintenance lane detected a new upstream Codex release but could not publish a matching multiaccount patch release.`,
+              ``,
+              `- Upstream version: \`${process.env.VERSION}\``,
+              `- Upstream ref: \`${process.env.CODEX_REF}\``,
+              `- Intended patch release tag: \`${process.env.RELEASE_TAG}\``,
+              `- Publish workflow result: \`${process.env.PUBLISH_RESULT}\``,
+              `- Failing run: ${process.env.RUN_URL}`,
+              ``,
+              `## Repair checklist`,
+              ``,
+              `1. Inspect the linked workflow run and download the debug artifacts.`,
+              `2. Reproduce with \`publish-hotpatch\` for \`${process.env.VERSION}\`.`,
+              `3. Fix the maintained patch logic, targeted tests, or workflow orchestration only.`,
+              `4. Run \`npm test\` locally and rerun the automated maintenance lane.`,
+              ``,
+              `## Copilot guidance`,
+              ``,
+              `- Start from the failing run artifacts before changing code.`,
+              `- Keep fixes scoped to patch maintenance, release automation, or focused regressions.`,
+              `- Do not retag or mutate an already-published release in place.`,
+            ].join("\n");
+
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: "open",
+              per_page: 100,
+            });
+            let issue = issues.find((entry) => entry.title === title);
+
+            if (issue) {
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body,
+              });
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body: `Automated retry failed again for Codex \`${process.env.VERSION}\`.\n\nRun: ${process.env.RUN_URL}`,
+              });
+            } else {
+              const created = await github.rest.issues.create({
+                owner,
+                repo,
+                title,
+                body,
+              });
+              issue = created.data;
+            }
+
+            if (!assignCopilot) {
+              core.info("Copilot assignment disabled for this run.");
+              return;
+            }
+
+            try {
+              await github.rest.issues.addAssignees({
+                owner,
+                repo,
+                issue_number: issue.number,
+                assignees: ["copilot-swe-agent[bot]"],
+              });
+            } catch (error) {
+              core.info(`Copilot assignment skipped: ${error.message}`);
+            }

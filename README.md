@@ -112,6 +112,22 @@ flowchart LR
 
 The automation is designed to stop before publishing when the patch program drifts, a regression breaks, or the manifest points at the wrong repo/tag. That last check exists specifically to prevent the kind of release cleanup that makes a public release page look sloppy.
 
+## Unattended Maintenance Loop
+
+```mermaid
+flowchart LR
+    A[scheduled auto-maintain-upstream] --> B{release tag already exists?}
+    B -->|yes| C[skip build and close tracked issue]
+    B -->|no| D[call publish-hotpatch]
+    D --> E{publish succeeded?}
+    E -->|yes| F[release manifest and overlays]
+    F --> G[close tracked issue]
+    E -->|no| H[open or update tracked failure issue]
+    H --> I[optionally assign Copilot cloud agent]
+```
+
+The green path is now zero-touch: detect the latest upstream Codex release, skip work if the matching patch release already exists, otherwise run the existing publish pipeline and close any tracked failure issue after success. Human attention is only pulled in when the deterministic path fails closed.
+
 ## Command Surface
 
 | Command | Purpose |

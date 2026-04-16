@@ -40,6 +40,7 @@
     "manifest:merge": "node ./scripts/merge-manifests.mjs",
     "manifest:validate": "node ./scripts/validate-release-manifest.mjs",
     "upstream:detect": "node ./scripts/detect-upstream-release.mjs",
+    "release:target": "node ./scripts/resolve-release-target.mjs",
     "upstream:fetch": "node ./scripts/fetch-upstream-binary.mjs",
     "versions:matrix": "node ./scripts/resolve-version-matrix.mjs"
   },
