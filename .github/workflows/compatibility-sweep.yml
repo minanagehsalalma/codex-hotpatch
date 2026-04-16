@@ -94,8 +94,10 @@ jobs:
         shell: bash
         working-directory: upstream/codex-rs
         run: |
-          cargo test -p codex-core --lib --release client::tests::current_client_setup_reloads_auth_from_disk_between_turns -- --exact
-          cargo test -p codex-core --test all --release suite::client_websockets::responses_websocket_reconnects_when_auth_snapshot_changes_between_turns -- --exact
+          export CODEX_TEST_CODEX_HOME_ROOT="$PWD/.codex-test-home"
+          mkdir -p "$CODEX_TEST_CODEX_HOME_ROOT"
+          cargo test -p codex-core --lib client::tests::current_client_setup_reloads_auth_from_disk_between_turns -- --exact
+          cargo test -p codex-core --test all suite::client_websockets::responses_websocket_reconnects_when_auth_snapshot_changes_between_turns -- --exact
       - name: Build patched Codex CLI
         shell: bash
         working-directory: upstream/codex-rs
