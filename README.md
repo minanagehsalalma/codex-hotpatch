@@ -1,5 +1,7 @@
 <h1 align="center">codex-multiaccount-patcher</h1>
-<img width="2048" height="2048" alt="heroimage" src="https://github.com/user-attachments/assets/8ee532dc-9cf2-4e30-ae1c-02d4261c28a8" />
+<p align="center">
+  <img width="240" alt="Codex multiaccount patcher mascot" src="https://github.com/user-attachments/assets/8ee532dc-9cf2-4e30-ae1c-02d4261c28a8" />
+</p>
 
 <div align="center">
   <p>
