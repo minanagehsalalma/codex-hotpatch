@@ -293,4 +293,9 @@ npm run versions:matrix -- --count 5 --min-version 0.119.0 --target-set fast
 | CI ownership | GitHub Actions is the only maintained automation surface |
 | Unsupported upstream builds | Launch fails closed until CI publishes a matching overlay |
 
+## Acknowledgements
+
+- [openai/codex](https://github.com/openai/codex) for the upstream Codex CLI this toolkit layers on top of
+- [loongphy/codex-auth](https://github.com/loongphy/codex-auth) for the auth management toolchain this project integrates and ships behind the unified CLI
+
 Trust files: [LICENSE](LICENSE), [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), [CHANGELOG.md](CHANGELOG.md).
