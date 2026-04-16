@@ -4,6 +4,7 @@ import path from "node:path";
 
 const CLIENT_RELATIVE_PATH = path.join("codex-rs", "core", "src", "client.rs");
 const TEST_SUITE_MOD_RELATIVE_PATH = path.join("codex-rs", "core", "tests", "suite", "mod.rs");
+const TEST_BINARY_SUPPORT_RELATIVE_PATH = path.join("codex-rs", "test-binary-support", "lib.rs");
 const TEST_FALLBACK_PATCH = path.join("patches", "codex-hot-reload-tests.patch");
 
 const CLIENT_RUNTIME_REWRITES = [
@@ -234,6 +235,43 @@ const TEST_SUITE_MOD_REWRITES = [
   },
 ];
 
+const TEST_BINARY_SUPPORT_REWRITES = [
+  {
+    id: "test-binary-support-pathbuf-import",
+    anchor: `use std::path::Path;
+`,
+    addition: `use std::path::PathBuf;
+`,
+    sentinel: "use std::path::PathBuf;",
+  },
+  {
+    id: "test-binary-support-safe-codex-home",
+    search: `            let codex_home = match tempfile::Builder::new().prefix(codex_home_prefix).tempdir() {
+                Ok(codex_home) => codex_home,
+                Err(error) => panic!("failed to create test CODEX_HOME: {error}"),
+            };
+`,
+    replacement: `            let codex_home_root = std::env::var_os("CODEX_TEST_CODEX_HOME_ROOT")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| {
+                    std::env::current_dir()
+                        .unwrap()
+                        .join(".codex-test-home")
+                });
+            if let Err(error) = std::fs::create_dir_all(&codex_home_root) {
+                panic!("failed to create test CODEX_HOME root: {error}");
+            }
+            let codex_home = match tempfile::Builder::new()
+                .prefix(codex_home_prefix)
+                .tempdir_in(&codex_home_root)
+            {
+                Ok(codex_home) => codex_home,
+                Err(error) => panic!("failed to create test CODEX_HOME: {error}"),
+            };
+`,
+  },
+];
+
 export async function applyMaintainedPatch({
   projectRoot,
   upstreamRoot,
@@ -262,6 +300,13 @@ export async function applyMaintainedPatch({
     );
   }
 
+  const testBinarySupportPath = path.join(upstreamRoot, TEST_BINARY_SUPPORT_RELATIVE_PATH);
+  const testBinarySupportResult = await applyOptionalFileRewrites({
+    filePath: testBinarySupportPath,
+    rewrites: TEST_BINARY_SUPPORT_REWRITES,
+    mode,
+  });
+
   const fallbackPatchPath = path.join(projectRoot, TEST_FALLBACK_PATCH);
   const fallbackPatch = await applyFallbackPatch({
     patchPath: fallbackPatchPath,
@@ -274,6 +319,8 @@ export async function applyMaintainedPatch({
     runtime: runtimeResult,
     testSuiteModPath,
     testSuiteMod: testSuiteModResult,
+    testBinarySupportPath,
+    testBinarySupport: testBinarySupportResult,
     fallbackPatch,
   };
 }
@@ -296,6 +343,39 @@ export function applyTestSuiteModRewrites(sourceText) {
     text,
     steps,
   };
+}
+
+export function applyTestBinarySupportRewrites(sourceText) {
+  const { text, steps } = applyRewritePlan(normalizeEol(sourceText), TEST_BINARY_SUPPORT_REWRITES);
+
+  return {
+    changed: normalizeEol(sourceText) !== text,
+    text,
+    steps,
+  };
+}
+
+async function applyOptionalFileRewrites({ filePath, rewrites, mode }) {
+  let originalText;
+  try {
+    originalText = await fs.readFile(filePath, "utf8");
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      return {
+        changed: false,
+        steps: rewrites.map((rewrite) => ({ id: rewrite.id, status: "skipped-file-missing" })),
+      };
+    }
+    throw error;
+  }
+
+  const { text, steps } = applyRewritePlan(normalizeEol(originalText), rewrites);
+  const changed = normalizeEol(originalText) !== text;
+  if (mode === "apply" && changed) {
+    await fs.writeFile(filePath, preserveEol(originalText, text), "utf8");
+  }
+
+  return { changed, text, steps };
 }
 
 function applyRewritePlan(initialText, rewrites) {

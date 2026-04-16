@@ -76,6 +76,11 @@ async function main() {
             changed: result.testSuiteMod.changed,
             steps: result.testSuiteMod.steps,
           },
+          testBinarySupportPath: result.testBinarySupportPath,
+          testBinarySupport: {
+            changed: result.testBinarySupport.changed,
+            steps: result.testBinarySupport.steps,
+          },
           fallbackPatch: result.fallbackPatch,
         },
         null,
@@ -87,6 +92,7 @@ async function main() {
 
   process.stdout.write(`runtime-rewrites: ${result.runtime.steps.map((step) => `${step.id}:${step.status}`).join(", ")}\n`);
   process.stdout.write(`suite-mod-rewrites: ${result.testSuiteMod.steps.map((step) => `${step.id}:${step.status}`).join(", ")}\n`);
+  process.stdout.write(`test-binary-support-rewrites: ${result.testBinarySupport.steps.map((step) => `${step.id}:${step.status}`).join(", ")}\n`);
   process.stdout.write(`fallback-patch: ${result.fallbackPatch.status}\n`);
 }
 

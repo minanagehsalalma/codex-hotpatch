@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   applyClientRuntimeRewrites,
+  applyTestBinarySupportRewrites,
   applyTestSuiteModRewrites,
 } from "../src/lib/maintained-patch.js";
 
@@ -173,4 +174,45 @@ pub static CODEX_ALIASES_TEMP_DIR: Option<TestBinaryDispatchGuard> = {
     result.steps.map((step) => step.status),
     ["skipped", "skipped"],
   );
+});
+
+const CLEAN_TEST_BINARY_SUPPORT_SNIPPET = `use std::path::Path;
+
+use codex_arg0::Arg0DispatchPaths;
+use codex_arg0::Arg0PathEntryGuard;
+use codex_arg0::arg0_dispatch;
+use tempfile::TempDir;
+
+pub fn configure_test_binary_dispatch<F>(
+    codex_home_prefix: &str,
+    classify: F,
+) -> Option<TestBinaryDispatchGuard>
+where
+    F: FnOnce(&str, Option<&str>) -> TestBinaryDispatchMode,
+{
+    match classify("", None) {
+        TestBinaryDispatchMode::InstallAliases => {
+            let codex_home = match tempfile::Builder::new().prefix(codex_home_prefix).tempdir() {
+                Ok(codex_home) => codex_home,
+                Err(error) => panic!("failed to create test CODEX_HOME: {error}"),
+            };
+        }
+        _ => None,
+    }
+}
+`;
+
+test("applyTestBinarySupportRewrites relocates upstream 0.121 test CODEX_HOME roots", () => {
+  const first = applyTestBinarySupportRewrites(CLEAN_TEST_BINARY_SUPPORT_SNIPPET);
+
+  assert.equal(first.steps.every((step) => step.status === "applied"), true);
+  assert.match(first.text, /use std::path::PathBuf;/);
+  assert.match(first.text, /CODEX_TEST_CODEX_HOME_ROOT/);
+  assert.match(first.text, /\.codex-test-home/);
+  assert.match(first.text, /\.tempdir_in\(&codex_home_root\)/);
+
+  const second = applyTestBinarySupportRewrites(first.text);
+
+  assert.equal(second.changed, false);
+  assert.equal(second.steps.every((step) => step.status === "already-applied"), true);
 });
