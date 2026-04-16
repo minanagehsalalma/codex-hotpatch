@@ -17,6 +17,7 @@ import { ensureManagedOverlay } from "./overlay.js";
 import { ensureManagedBinOnUserPath, removeManagedBinFromUserPath } from "./path-env.js";
 import { deleteState, loadState, saveState } from "./state.js";
 import { removeManagedShims, writeManagedShims } from "./shims.js";
+import { installCurrentCheckout, installPublishedToolkit } from "./toolkit-install.js";
 import { ensureDir, pathExists, readJson, sha256File, writeJson } from "./util.js";
 
 function splitWindowsPathList(value) {
@@ -240,12 +241,17 @@ export async function commandDoctor(context) {
   lines.push(`auth-active-auth: ${activeAuthExists ? "present" : "missing"}`);
 
   let authHealthy = false;
+  let autoSwitchEnabled = null;
   try {
     const authStatus = await captureAuthCli(context, ["status"]);
     authHealthy = authStatus.code === 0 && registryExists && activeAuthExists;
     lines.push(`auth-status-exit: ${authStatus.code}`);
     for (const line of authStatus.stdout.split(/\r?\n/).filter(Boolean)) {
       lines.push(`auth-status-${line}`);
+      const match = /^auto-switch:\s*(on|off)\s*$/i.exec(line);
+      if (match) {
+        autoSwitchEnabled = match[1].toLowerCase() === "on";
+      }
     }
     if (authStatus.stderr.trim()) {
       for (const line of authStatus.stderr.split(/\r?\n/).filter(Boolean)) {
@@ -256,12 +262,28 @@ export async function commandDoctor(context) {
     lines.push("auth-status-exit: error");
     lines.push(`auth-error: ${error.message}`);
   }
+  if (autoSwitchEnabled !== null) {
+    lines.push(`auth-auto-switch-enabled: ${autoSwitchEnabled ? "yes" : "no"}`);
+    if (!autoSwitchEnabled) {
+      lines.push("auth-recommendation: enable auto-switch for seamless account rollover");
+    }
+  }
 
   const overall = patchHealthy && authHealthy ? "ok" : state || authHealthy ? "warn" : "fail";
   process.stdout.write(`doctor: ${overall}\n${lines.join("\n")}\n`);
   if (overall !== "ok") {
     process.exitCode = 1;
   }
+}
+
+export async function commandUpgrade(context) {
+  await installPublishedToolkit(context);
+  process.stdout.write("upgrade: complete\n");
+}
+
+export async function commandSelfInstall(context) {
+  const install = await installCurrentCheckout(context);
+  process.stdout.write(`self-install: complete (${install.packageName}@${install.version})\n`);
 }
 
 export async function commandRepair(context) {

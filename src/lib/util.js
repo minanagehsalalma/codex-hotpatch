@@ -71,7 +71,7 @@ export async function runCommand(command, args, options = {}) {
       stdio: options.stdio ?? ["ignore", "pipe", "pipe"],
       cwd: options.cwd,
       env: options.env,
-      shell: false,
+      shell: options.shell ?? false,
       windowsHide: true,
     });
 

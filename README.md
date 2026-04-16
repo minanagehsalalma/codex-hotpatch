@@ -61,7 +61,28 @@ codex-multiaccount auth status
 codex-multiaccount auth list
 ```
 
-After that, plain `codex` should route through the managed shim automatically. `codex-auth` is also installed as a compatibility alias, and the legacy alias `codex-hotpatch` still works during the transition.
+6. Enable auto-switch if you want the patcher and auth manager to work together hands-free:
+
+```bash
+codex-multiaccount config auto enable
+codex-multiaccount config auto --5h 10 --weekly 1
+```
+
+If `auth status` already shows `auto-switch: ON`, leave it as-is. After that, plain `codex` should route through the managed shim automatically and keep picking up auth changes between turns. `codex-auth` is also installed as a compatibility alias, and the legacy alias `codex-hotpatch` still works during the transition.
+
+7. Refresh the toolkit when a new published build lands:
+
+```bash
+codex-multiaccount upgrade
+```
+
+Maintainers working from a local checkout can refresh the global install from that checkout instead:
+
+```bash
+codex-multiaccount self-install
+```
+
+Published installs do not auto-refresh every time the repo changes. The toolkit upgrades the managed Codex runtime automatically, but the toolkit package itself only changes when you reinstall or run `upgrade`.
 
 ## Toolkit Home
 
@@ -154,6 +175,8 @@ The green path is now zero-touch: detect the latest upstream Codex release, skip
 | `codex-multiaccount install [--overlay-path <path>] [--manifest <file-or-url>] [--path <upstream-binary>] [--force]` | Install shims, discover upstream Codex, and materialize the matching overlay |
 | `codex-multiaccount status` | Show upstream hash, active overlay, manifest source, and install health |
 | `codex-multiaccount doctor` | Check both the patch runtime and auth runtime in one report |
+| `codex-multiaccount upgrade` | Replace the global toolkit install with the latest published build from GitHub |
+| `codex-multiaccount self-install` | Pack the current checkout and install it globally as a self-contained package |
 | `codex-multiaccount repair` | Re-resolve the manifest and refresh the managed runtime |
 | `codex-multiaccount uninstall` | Remove the managed runtime and restore normal `codex` launch behavior |
 | `codex-multiaccount launch -- [codex args...]` | Internal entrypoint used by the managed shims |
@@ -167,7 +190,7 @@ The green path is now zero-touch: detect the latest upstream Codex release, skip
 | `codex-multiaccount config ...` | Convenience alias for `codex-multiaccount auth config` |
 | `codex-auth ...` | Backward-compatible shim to the bundled auth toolkit |
 
-Normal users should usually need `install`, `status`, `doctor`, `auth status`, `auth list`, and `switch`.
+Normal users should usually need `install`, `status`, `doctor`, `auth status`, `auth list`, `config auto enable`, and `switch`.
 
 ## Auth Toolkit
 
@@ -179,6 +202,7 @@ On Windows, the toolkit now prefers a vendored snapshot of the known-good workin
 codex-multiaccount auth status
 codex-multiaccount auth list
 codex-multiaccount switch work
+codex-multiaccount config auto enable
 codex-multiaccount config auto --5h 10 --weekly 1
 ```
 

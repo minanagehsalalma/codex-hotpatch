@@ -12,8 +12,10 @@ import {
   commandInstall,
   commandLaunch,
   commandRepair,
+  commandSelfInstall,
   commandStatus,
   commandUninstall,
+  commandUpgrade,
 } from "./lib/commands.js";
 
 function usage() {
@@ -23,6 +25,8 @@ Commands:
   install [--overlay-path <path>] [--manifest <file-or-url>] [--path <upstream-binary>] [--force]
   status
   doctor
+  upgrade
+  self-install
   repair
   uninstall
   launch -- [codex args...]
@@ -107,6 +111,12 @@ async function main() {
       return;
     case "doctor":
       await commandDoctor(context);
+      return;
+    case "upgrade":
+      await commandUpgrade(context);
+      return;
+    case "self-install":
+      await commandSelfInstall(context);
       return;
     case "repair":
       await commandRepair(context);
