@@ -1,6 +1,24 @@
 import { normalizeVersionTag } from "./upstream-versions.js";
 
 const SEMVER_LIKE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const KNOWN_TARGETS = [
+  {
+    os: "ubuntu-latest",
+    platform: "linux",
+    arch: "x64",
+    artifact_suffix: "linux-x64",
+    executable_name: "codex",
+    github_asset_name: "codex-linux-x64",
+  },
+  {
+    os: "windows-latest",
+    platform: "win32",
+    arch: "x64",
+    artifact_suffix: "win32-x64",
+    executable_name: "codex.exe",
+    github_asset_name: "codex-win32-x64.exe",
+  },
+];
 
 export function isSemverLikeTag(value) {
   return SEMVER_LIKE.test(normalizeVersionTag(`${value ?? ""}`.trim()));
@@ -64,12 +82,30 @@ export function parseBooleanFlag(value, defaultValue = false) {
 }
 
 export function resolveGitHubReleaseAssetName(platform, arch) {
-  switch (`${platform}-${arch}`) {
-    case "linux-x64":
-      return "codex-linux-x64";
-    case "win32-x64":
-      return "codex-win32-x64.exe";
-    default:
-      throw new Error(`unsupported GitHub release asset target ${platform}-${arch}`);
+  const match = KNOWN_TARGETS.find((entry) => entry.platform === platform && entry.arch === arch);
+  if (!match) {
+    throw new Error(`unsupported GitHub release asset target ${platform}-${arch}`);
   }
+  return match.github_asset_name;
+}
+
+export function buildUpstreamTargetMatrix(source, { releaseAssets = [] } = {}) {
+  if (source === "npm") {
+    return KNOWN_TARGETS.map(stripGithubAssetName);
+  }
+  if (source !== "github-release") {
+    throw new Error(`unsupported upstream source ${source}`);
+  }
+
+  const assetNames = new Set((releaseAssets ?? []).map((entry) => (typeof entry === "string" ? entry : entry?.name)).filter(Boolean));
+  const filtered = KNOWN_TARGETS.filter((entry) => assetNames.has(entry.github_asset_name)).map(stripGithubAssetName);
+  if (filtered.length === 0) {
+    throw new Error("no supported GitHub release assets found for known targets");
+  }
+  return filtered;
+}
+
+function stripGithubAssetName(entry) {
+  const { github_asset_name: _githubAssetName, ...rest } = entry;
+  return rest;
 }

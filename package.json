@@ -49,6 +49,7 @@
     "upstream:detect": "node ./scripts/detect-upstream-release.mjs",
     "release:target": "node ./scripts/resolve-release-target.mjs",
     "upstream:fetch": "node ./scripts/fetch-upstream-binary.mjs",
+    "upstream:matrix": "node ./scripts/resolve-upstream-matrix.mjs",
     "versions:matrix": "node ./scripts/resolve-version-matrix.mjs"
   },
   "engines": {

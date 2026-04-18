@@ -68,6 +68,7 @@ jobs:
       release_tag: ${{ steps.detect.outputs.release_tag }}
       upstream_repo: ${{ steps.detect.outputs.upstream_repo }}
       upstream_source: ${{ steps.detect.outputs.upstream_source }}
+      target_matrix: ${{ steps.detect.outputs.target_matrix }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -78,19 +79,23 @@ jobs:
       - id: detect
         shell: bash
         run: |
+          mkdir -p dist/debug
           TARGET_INPUT="${{ inputs.codex_version }}"
           UPSTREAM_REPO="${{ inputs.upstream_repo }}"
           UPSTREAM_SOURCE="${{ inputs.upstream_source }}"
           INCLUDE_PRERELEASES="${{ inputs.include_prereleases }}"
+          node ./scripts/detect-upstream-release.mjs --repo "$UPSTREAM_REPO" --include-prereleases "$INCLUDE_PRERELEASES" --field json --output dist/debug/upstream-release.json > /dev/null
           if [ -z "$TARGET_INPUT" ]; then
             TARGET_INPUT="$(node ./scripts/detect-upstream-release.mjs --repo "$UPSTREAM_REPO" --include-prereleases "$INCLUDE_PRERELEASES" --field tagName)"
           fi
+          TARGET_MATRIX="$(node ./scripts/resolve-upstream-matrix.mjs --source "$UPSTREAM_SOURCE" --release-json dist/debug/upstream-release.json)"
           REF="$(node ./scripts/resolve-release-target.mjs --version "$TARGET_INPUT" --field codexRef)"
           VERSION="$(node ./scripts/resolve-release-target.mjs --version "$TARGET_INPUT" --field codexVersion)"
           echo "codex_ref=$REF" >> "$GITHUB_OUTPUT"
           echo "codex_version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "upstream_repo=$UPSTREAM_REPO" >> "$GITHUB_OUTPUT"
           echo "upstream_source=$UPSTREAM_SOURCE" >> "$GITHUB_OUTPUT"
+          echo "target_matrix=$TARGET_MATRIX" >> "$GITHUB_OUTPUT"
           RELEASE_TAG="$(node ./scripts/resolve-release-target.mjs --version "$TARGET_INPUT" --release-tag "${{ inputs.release_tag }}" --field releaseTag)"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
@@ -98,18 +103,7 @@ jobs:
     needs: detect-upstream
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: win32
-            arch: x64
-            artifact_suffix: win32-x64
-            executable_name: codex.exe
-          - os: ubuntu-latest
-            platform: linux
-            arch: x64
-            artifact_suffix: linux-x64
-            executable_name: codex
+      matrix: ${{ fromJSON(needs.detect-upstream.outputs.target_matrix) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -139,18 +133,7 @@ jobs:
     needs: detect-upstream
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: win32
-            arch: x64
-            artifact_suffix: win32-x64
-            executable_name: codex.exe
-          - os: ubuntu-latest
-            platform: linux
-            arch: x64
-            artifact_suffix: linux-x64
-            executable_name: codex
+      matrix: ${{ fromJSON(needs.detect-upstream.outputs.target_matrix) }}
     runs-on: ${{ matrix.os }}
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -223,16 +206,7 @@ jobs:
     needs: [detect-upstream, fetch-upstream, build-overlay]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            platform: win32
-            arch: x64
-            artifact_suffix: win32-x64
-          - os: ubuntu-latest
-            platform: linux
-            arch: x64
-            artifact_suffix: linux-x64
+      matrix: ${{ fromJSON(needs.detect-upstream.outputs.target_matrix) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6

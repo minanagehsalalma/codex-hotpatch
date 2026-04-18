@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { selectLatestGitHubRelease } from "../src/lib/upstream-release.js";
 import {
+  buildUpstreamTargetMatrix,
   isSemverLikeTag,
   resolveCodexRef,
   resolveGitHubReleaseAssetName,
@@ -37,4 +38,21 @@ test("selectLatestGitHubRelease skips prereleases unless requested", () => {
   ];
   assert.equal(selectLatestGitHubRelease(releases, { includePrereleases: false }).tag_name, "rust-v0.121.0");
   assert.equal(selectLatestGitHubRelease(releases, { includePrereleases: true }).tag_name, "preview-1");
+});
+
+test("buildUpstreamTargetMatrix keeps the full matrix for npm", () => {
+  const matrix = buildUpstreamTargetMatrix("npm");
+  assert.equal(matrix.length, 2);
+  assert.deepEqual(
+    matrix.map((entry) => entry.platform).sort(),
+    ["linux", "win32"],
+  );
+});
+
+test("buildUpstreamTargetMatrix filters GitHub release targets by available assets", () => {
+  const matrix = buildUpstreamTargetMatrix("github-release", {
+    releaseAssets: [{ name: "codex-linux-x64" }, { name: "README.txt" }],
+  });
+  assert.equal(matrix.length, 1);
+  assert.equal(matrix[0].platform, "linux");
 });
