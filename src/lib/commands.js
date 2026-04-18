@@ -3,7 +3,7 @@ import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 
 import { appDirs, defaultManifestUrl, PRIMARY_CLI_NAME } from "./constants.js";
-import { captureAuthCli, inspectAuthCli } from "./auth-cli.js";
+import { captureAuthCli, forwardAuthCli, inspectAuthCli, parseAutoSwitchEnabled } from "./auth-cli.js";
 import { discoverCodexInstall, autoDetectOverlayPath } from "./codex-discovery.js";
 import {
   createLocalManifestRecord,
@@ -248,11 +248,8 @@ export async function commandDoctor(context) {
     lines.push(`auth-status-exit: ${authStatus.code}`);
     for (const line of authStatus.stdout.split(/\r?\n/).filter(Boolean)) {
       lines.push(`auth-status-${line}`);
-      const match = /^auto-switch:\s*(on|off)\s*$/i.exec(line);
-      if (match) {
-        autoSwitchEnabled = match[1].toLowerCase() === "on";
-      }
     }
+    autoSwitchEnabled = parseAutoSwitchEnabled(authStatus.stdout);
     if (authStatus.stderr.trim()) {
       for (const line of authStatus.stderr.split(/\r?\n/).filter(Boolean)) {
         lines.push(`auth-stderr-${line}`);
@@ -274,6 +271,49 @@ export async function commandDoctor(context) {
   if (overall !== "ok") {
     process.exitCode = 1;
   }
+}
+
+export async function commandPin(context, authArgs) {
+  const status = await captureAuthCli(context, ["status"]);
+  if (status.code !== 0) {
+    throw new Error(`unable to inspect auth auto-switch state (exit ${status.code})`);
+  }
+
+  const autoSwitchEnabled = parseAutoSwitchEnabled(status.stdout);
+  if (autoSwitchEnabled === null) {
+    throw new Error("unable to determine whether auth auto-switch is enabled");
+  }
+
+  if (autoSwitchEnabled) {
+    const disable = await forwardAuthCli(context, ["config", "auto", "disable"]);
+    if (disable.signal) {
+      process.kill(process.pid, disable.signal);
+      return;
+    }
+    if (disable.code !== 0) {
+      process.exit(disable.code ?? 1);
+      return;
+    }
+    process.stdout.write(
+      "pin: auto-switch disabled so the manual account selection will stick.\n",
+    );
+  } else {
+    process.stdout.write("pin: auto-switch already disabled.\n");
+  }
+
+  const switchOutcome = await forwardAuthCli(context, ["switch", ...authArgs]);
+  if (switchOutcome.signal) {
+    process.kill(process.pid, switchOutcome.signal);
+    return;
+  }
+  if (switchOutcome.code !== 0) {
+    process.exit(switchOutcome.code ?? 1);
+    return;
+  }
+
+  process.stdout.write(
+    `pin: active account is now pinned. Run ${PRIMARY_CLI_NAME} config auto enable when you want automatic rollover again.\n`,
+  );
 }
 
 export async function commandUpgrade(context) {

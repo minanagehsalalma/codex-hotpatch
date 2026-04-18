@@ -4,7 +4,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { inspectAuthCli, runAuthCli } from "../src/lib/auth-cli.js";
+import { inspectAuthCli, parseAutoSwitchEnabled, runAuthCli } from "../src/lib/auth-cli.js";
 
 test("inspectAuthCli prefers vendored codex-auth snapshot", async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-multiaccount-auth-"));
@@ -47,4 +47,10 @@ test("inspectAuthCli prefers vendored codex-auth snapshot", async () => {
   const captured = JSON.parse(await fs.readFile(captureFile, "utf8"));
   assert.deepEqual(captured, ["status"]);
   await fs.rm(tempRoot, { recursive: true, force: true });
+});
+
+test("parseAutoSwitchEnabled tolerates ANSI and mixed case", () => {
+  assert.equal(parseAutoSwitchEnabled("\u001b[32mauto-switch: ON\u001b[0m\n"), true);
+  assert.equal(parseAutoSwitchEnabled("auto-switch: off\n"), false);
+  assert.equal(parseAutoSwitchEnabled("status: unknown\n"), null);
 });

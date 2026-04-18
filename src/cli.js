@@ -11,6 +11,7 @@ import {
   commandDoctor,
   commandInstall,
   commandLaunch,
+  commandPin,
   commandRepair,
   commandSelfInstall,
   commandStatus,
@@ -36,6 +37,7 @@ Convenience aliases:
   list
   login [--device-auth]
   switch [<query>]
+  pin [<query>]
   remove [<query>|--all]
   import ...
   clean
@@ -111,6 +113,9 @@ async function main() {
       return;
     case "doctor":
       await commandDoctor(context);
+      return;
+    case "pin":
+      await commandPin(context, parsed.positional);
       return;
     case "upgrade":
       await commandUpgrade(context);

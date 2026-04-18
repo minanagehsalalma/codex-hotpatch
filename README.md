@@ -118,6 +118,14 @@ codex-multiaccount config auto --5h 10 --weekly 1
 
 If `auth status` already shows `auto-switch: ON`, leave it as-is. After that, plain `codex` should route through the managed shim automatically and keep picking up auth changes between turns. `codex-auth` is also installed as a compatibility alias, and the legacy alias `codex-hotpatch` still works during the transition.
 
+If you want to manually pin a specific account for a while, use:
+
+```bash
+codex-multiaccount pin work
+```
+
+That command disables auto-switch first, performs the account switch, and leaves auto-switch off so the manual selection does not get immediately overturned by the background rollover logic. The same helper is also available as `codex-auth pin`.
+
 7. Refresh the toolkit when a new published build lands:
 
 ```bash
@@ -238,6 +246,7 @@ The green path is now zero-touch: detect the latest upstream Codex release, skip
 | `codex-multiaccount list` | Convenience alias for `codex-multiaccount auth list` |
 | `codex-multiaccount login [--device-auth]` | Convenience alias for `codex-multiaccount auth login` |
 | `codex-multiaccount switch [<query>]` | Convenience alias for `codex-multiaccount auth switch` |
+| `codex-multiaccount pin [<query>]` | Disable auto-switch, perform a manual account switch, and leave that account pinned until you re-enable auto-switch |
 | `codex-multiaccount remove ...` | Convenience alias for `codex-multiaccount auth remove` |
 | `codex-multiaccount import ...` | Convenience alias for `codex-multiaccount auth import` |
 | `codex-multiaccount clean` | Convenience alias for `codex-multiaccount auth clean` |
@@ -255,10 +264,13 @@ On Windows, the toolkit now prefers a vendored snapshot of the known-good workin
 ```bash
 codex-multiaccount auth status
 codex-multiaccount auth list
+codex-multiaccount pin work
 codex-multiaccount switch work
 codex-multiaccount config auto enable
 codex-multiaccount config auto --5h 10 --weekly 1
 ```
+
+Use `switch` when you are fine with the auth manager making its own rollover decisions. Use `pin` when you want the selected account to stay selected until you explicitly turn auto-switch back on.
 
 The compatibility alias still works too:
 

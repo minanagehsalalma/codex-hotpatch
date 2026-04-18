@@ -6,8 +6,17 @@ import { AUTH_LEGACY_CLI_NAME, PRIMARY_CLI_NAME } from "./constants.js";
 import { pathExists } from "./util.js";
 
 export async function runAuthCli(context, args) {
+  const outcome = await forwardAuthCli(context, args);
+  if (outcome.signal) {
+    process.kill(process.pid, outcome.signal);
+    return;
+  }
+  process.exit(outcome.code ?? 1);
+}
+
+export async function forwardAuthCli(context, args) {
   const launch = await inspectAuthCli(context);
-  await spawnAndWait(launch.command, [...launch.args, ...args]);
+  return spawnAndCapture(launch, args, { captureOutput: false });
 }
 
 export async function inspectAuthCli(context) {
@@ -50,33 +59,7 @@ export async function inspectAuthCli(context) {
 
 export async function captureAuthCli(context, args) {
   const launch = await inspectAuthCli(context);
-  const child = spawn(launch.command, [...launch.args, ...args], {
-    stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env },
-    windowsHide: true,
-  });
-
-  let stdout = "";
-  let stderr = "";
-  child.stdout.on("data", (chunk) => {
-    stdout += chunk.toString();
-  });
-  child.stderr.on("data", (chunk) => {
-    stderr += chunk.toString();
-  });
-
-  const outcome = await new Promise((resolve, reject) => {
-    child.on("error", reject);
-    child.on("exit", (code, signal) => resolve({ code, signal }));
-  });
-
-  return {
-    ...launch,
-    code: outcome.code ?? (outcome.signal ? 1 : 0),
-    signal: outcome.signal ?? null,
-    stdout,
-    stderr,
-  };
+  return spawnAndCapture(launch, args, { captureOutput: true });
 }
 
 function buildAuthInspection(context, source, entrypoint) {
@@ -122,24 +105,45 @@ function resolveGlobalAuthEntrypoint(context) {
   return path.join("/usr/local/lib/node_modules", "@loongphy", "codex-auth", "bin", "codex-auth.js");
 }
 
-async function spawnAndWait(command, args) {
-  const child = spawn(command, args, {
-    stdio: "inherit",
+export function parseAutoSwitchEnabled(output) {
+  const normalized = String(output ?? "").replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+  for (const line of normalized.split(/\r?\n/)) {
+    const match = /^auto-switch:\s*(on|off)\s*$/i.exec(line.trim());
+    if (match) {
+      return match[1].toLowerCase() === "on";
+    }
+  }
+  return null;
+}
+
+async function spawnAndCapture(launch, args, { captureOutput }) {
+  const child = spawn(launch.command, [...launch.args, ...args], {
+    stdio: captureOutput ? ["ignore", "pipe", "pipe"] : "inherit",
     env: { ...process.env },
     windowsHide: true,
   });
 
-  child.on("error", (error) => {
-    process.stderr.write(`error: failed to launch auth toolkit: ${error.message}\n`);
-    process.exit(1);
-  });
+  let stdout = "";
+  let stderr = "";
+  if (captureOutput) {
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+  }
 
-  const outcome = await new Promise((resolve) => {
+  const outcome = await new Promise((resolve, reject) => {
+    child.on("error", reject);
     child.on("exit", (code, signal) => resolve({ code, signal }));
   });
-  if (outcome.signal) {
-    process.kill(process.pid, outcome.signal);
-    return;
-  }
-  process.exit(outcome.code ?? 1);
+
+  return {
+    ...launch,
+    code: outcome.code ?? (outcome.signal ? 1 : 0),
+    signal: outcome.signal ?? null,
+    stdout,
+    stderr,
+  };
 }
