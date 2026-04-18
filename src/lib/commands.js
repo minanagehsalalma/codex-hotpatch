@@ -131,6 +131,7 @@ export async function commandInstall(context, options) {
       managedOverlayPath: null,
     });
     manifest = { schemaVersion: 1, records: [activeRecord] };
+    manifestSource = null;
   }
 
   const overlay = await ensureManagedOverlay(context, dirs, activeRecord);
