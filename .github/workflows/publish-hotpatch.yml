@@ -17,6 +17,11 @@ on:
         required: false
         type: string
         default: npm
+      build_mode:
+        description: Overlay build mode
+        required: false
+        type: string
+        default: rebuild
       include_prereleases:
         description: Include prereleases when auto-detecting the upstream release
         required: false
@@ -43,6 +48,14 @@ on:
         options:
           - npm
           - github-release
+      build_mode:
+        description: Overlay build mode
+        required: false
+        default: rebuild
+        type: choice
+        options:
+          - rebuild
+          - prebuilt-only
       include_prereleases:
         description: Include prereleases when auto-detecting the upstream release
         required: false
@@ -69,6 +82,7 @@ jobs:
       upstream_repo: ${{ steps.detect.outputs.upstream_repo }}
       upstream_source: ${{ steps.detect.outputs.upstream_source }}
       target_matrix: ${{ steps.detect.outputs.target_matrix }}
+      build_mode: ${{ steps.detect.outputs.build_mode }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -83,6 +97,7 @@ jobs:
           TARGET_INPUT="${{ inputs.codex_version }}"
           UPSTREAM_REPO="${{ inputs.upstream_repo }}"
           UPSTREAM_SOURCE="${{ inputs.upstream_source }}"
+          BUILD_MODE="${{ inputs.build_mode }}"
           INCLUDE_PRERELEASES="${{ inputs.include_prereleases }}"
           node ./scripts/detect-upstream-release.mjs --repo "$UPSTREAM_REPO" --include-prereleases "$INCLUDE_PRERELEASES" --field json --output dist/debug/upstream-release.json > /dev/null
           if [ -z "$TARGET_INPUT" ]; then
@@ -95,6 +110,7 @@ jobs:
           echo "codex_version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "upstream_repo=$UPSTREAM_REPO" >> "$GITHUB_OUTPUT"
           echo "upstream_source=$UPSTREAM_SOURCE" >> "$GITHUB_OUTPUT"
+          echo "build_mode=$BUILD_MODE" >> "$GITHUB_OUTPUT"
           echo "target_matrix=$TARGET_MATRIX" >> "$GITHUB_OUTPUT"
           RELEASE_TAG="$(node ./scripts/resolve-release-target.mjs --version "$TARGET_INPUT" --release-tag "${{ inputs.release_tag }}" --field releaseTag)"
           echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
@@ -130,7 +146,7 @@ jobs:
           path: dist/upstream/${{ matrix.executable_name }}
 
   build-overlay:
-    needs: detect-upstream
+    needs: [detect-upstream, fetch-upstream]
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.detect-upstream.outputs.target_matrix) }}
@@ -147,29 +163,40 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - uses: actions/download-artifact@v8
+        if: needs.detect-upstream.outputs.build_mode == 'prebuilt-only'
+        with:
+          name: upstream-${{ matrix.artifact_suffix }}
+          path: artifacts/upstream
       - uses: actions/checkout@v6
+        if: needs.detect-upstream.outputs.build_mode == 'rebuild'
         with:
           repository: ${{ needs.detect-upstream.outputs.upstream_repo }}
           ref: ${{ needs.detect-upstream.outputs.codex_ref }}
           path: upstream
       - uses: dtolnay/rust-toolchain@stable
+        if: needs.detect-upstream.outputs.build_mode == 'rebuild'
       - uses: mozilla-actions/sccache-action@v0.0.9
+        if: needs.detect-upstream.outputs.build_mode == 'rebuild'
       - uses: Swatinem/rust-cache@v2
+        if: needs.detect-upstream.outputs.build_mode == 'rebuild'
         with:
           shared-key: publish-${{ matrix.platform }}-${{ needs.detect-upstream.outputs.codex_version }}
           cache-on-failure: "true"
       - name: Install Linux build dependencies
-        if: matrix.os == 'ubuntu-latest'
+        if: needs.detect-upstream.outputs.build_mode == 'rebuild' && matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y libcap-dev pkg-config
       - name: Apply maintained hot-reload patch program
+        if: needs.detect-upstream.outputs.build_mode == 'rebuild'
         shell: bash
         run: |
           mkdir -p dist/debug
           node ./scripts/apply-maintained-patch.mjs --upstream-root ./upstream --json > dist/debug/patch-report-${{ matrix.artifact_suffix }}.json
       - name: Run focused regressions
+        if: needs.detect-upstream.outputs.build_mode == 'rebuild'
         shell: bash
         working-directory: upstream/codex-rs
         run: |
@@ -178,20 +205,29 @@ jobs:
           cargo test -p codex-core --lib client::tests::current_client_setup_reloads_auth_from_disk_between_turns -- --exact
           cargo test -p codex-core --test all suite::client_websockets::responses_websocket_reconnects_when_auth_snapshot_changes_between_turns -- --exact
       - name: Build patched Codex CLI
+        if: needs.detect-upstream.outputs.build_mode == 'rebuild'
         shell: bash
         working-directory: upstream/codex-rs
         run: cargo build -p codex-cli --release --locked
-      - name: Package overlay artifact
+      - name: Package rebuilt overlay artifact
+        if: needs.detect-upstream.outputs.build_mode == 'rebuild'
         shell: bash
         run: |
           mkdir -p dist/overlay
           cp "upstream/codex-rs/target/release/${{ matrix.executable_name }}" "dist/overlay/codex-${{ needs.detect-upstream.outputs.codex_version }}-${{ matrix.artifact_suffix }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
+      - name: Package prebuilt overlay artifact
+        if: needs.detect-upstream.outputs.build_mode == 'prebuilt-only'
+        shell: bash
+        run: |
+          mkdir -p dist/overlay
+          SOURCE_FILE="$(find artifacts/upstream -type f | head -n 1)"
+          cp "$SOURCE_FILE" "dist/overlay/codex-${{ needs.detect-upstream.outputs.codex_version }}-${{ matrix.artifact_suffix }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}"
       - uses: actions/upload-artifact@v7
         with:
           name: overlay-${{ matrix.artifact_suffix }}
           path: dist/overlay/*
       - name: Upload debug bundle on failure
-        if: failure()
+        if: failure() && needs.detect-upstream.outputs.build_mode == 'rebuild'
         uses: actions/upload-artifact@v7
         with:
           name: debug-${{ matrix.artifact_suffix }}

@@ -132,7 +132,7 @@ codex-multiaccount self-install
 
 Published installs do not auto-refresh every time the repo changes. The toolkit upgrades the managed Codex runtime automatically, but the toolkit package itself only changes when you reinstall or run `upgrade`.
 
-The default maintenance lane still targets the normal `openai/codex` semver/npm shape. Manual publish runs can now also target forked GitHub release assets, including prereleases with non-semver tags, by passing `upstream_repo`, `upstream_source=github-release`, and `include_prereleases=true` into the workflow dispatch form.
+The default maintenance lane still targets the normal `openai/codex` semver/npm shape. Manual publish runs can now also target forked GitHub release assets, including prereleases with non-semver tags, by passing `upstream_repo`, `upstream_source=github-release`, and `include_prereleases=true` into the workflow dispatch form. If the fork only ships prebuilt assets and the source tree does not cleanly rebuild in CI, use `build_mode=prebuilt-only` to publish those fetched assets directly as the overlay payload for the supported platforms on that release.
 
 ## Toolkit Home
 
