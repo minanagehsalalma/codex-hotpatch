@@ -1,6 +1,20 @@
 name: compatibility-sweep
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/compatibility-sweep.yml"
+      - ".github/workflows/publish-hotpatch.yml"
+      - "package.json"
+      - "patches/**"
+      - "scripts/apply-maintained-patch.mjs"
+      - "scripts/resolve-version-matrix.mjs"
+      - "src/lib/maintained-patch.js"
+      - "src/lib/upstream-versions.js"
+      - "test/maintained-patch.test.js"
+      - "test/upstream-versions.test.js"
   workflow_dispatch:
     inputs:
       versions:
@@ -31,6 +45,7 @@ concurrency:
 jobs:
   resolve-matrix:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       matrix: ${{ steps.resolve.outputs.matrix }}
     steps:
@@ -59,14 +74,13 @@ jobs:
   sweep:
     needs: resolve-matrix
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.resolve-matrix.outputs.matrix) }}
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: "true"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -80,11 +94,12 @@ jobs:
           ref: ${{ matrix.codex_ref }}
           path: upstream
       - uses: dtolnay/rust-toolchain@stable
-      - uses: mozilla-actions/sccache-action@v0.0.9
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: sweep-${{ matrix.platform }}-${{ matrix.codex_version }}
           cache-on-failure: "true"
+          workspaces: |
+            upstream/codex-rs -> upstream/codex-rs/target
       - name: Install Linux build dependencies
         if: matrix.os == 'ubuntu-latest'
         shell: bash
@@ -119,4 +134,3 @@ jobs:
             upstream/codex-rs/core/src/client_tests.rs
             upstream/codex-rs/core/tests/common/responses.rs
             upstream/codex-rs/core/tests/suite/client_websockets.rs
-
