@@ -1,4 +1,8 @@
 dist/
 node_modules/
+!vendor/codex-auth-working-snapshot/node_modules/
+!vendor/codex-auth-working-snapshot/node_modules/@loongphy/
+!vendor/codex-auth-working-snapshot/node_modules/@loongphy/codex-auth-win32-x64/
+!vendor/codex-auth-working-snapshot/node_modules/@loongphy/codex-auth-win32-x64/**
 *.log
 *.tgz

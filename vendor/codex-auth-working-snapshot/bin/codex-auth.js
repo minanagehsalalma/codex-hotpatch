@@ -7,9 +7,11 @@ const rootPackageJsonPath = path.join(__dirname, "..", "package.json");
 
 const packageMap = {
   "linux:x64": "@loongphy/codex-auth-linux-x64",
+  "linux:arm64": "@loongphy/codex-auth-linux-arm64",
   "darwin:x64": "@loongphy/codex-auth-darwin-x64",
   "darwin:arm64": "@loongphy/codex-auth-darwin-arm64",
-  "win32:x64": "@loongphy/codex-auth-win32-x64"
+  "win32:x64": "@loongphy/codex-auth-win32-x64",
+  "win32:arm64": "@loongphy/codex-auth-win32-arm64"
 };
 
 function readRootPackage() {
@@ -69,7 +71,11 @@ function resolveBinary() {
 
 const binaryPath = resolveBinary();
 const child = spawnSync(binaryPath, process.argv.slice(2), {
-  stdio: "inherit"
+  stdio: "inherit",
+  env: {
+    ...process.env,
+    CODEX_AUTH_NODE_EXECUTABLE: process.execPath
+  }
 });
 
 if (child.error) {

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- refreshed the vendored Windows auth working snapshot to the validated `codex-auth` 0.2.3 build, including the stale-helper shutdown fix for auto-switch service reinstall/disable
 - documented that the maintained patch intentionally relocates temp-root test `CODEX_HOME` harnesses on hosts where release-mode helper setup rejects temporary roots
 - added `pin` helpers to `codex-multiaccount` and the bundled `codex-auth` shim so manual account selection can disable auto-switch first and stay pinned
 - documented the difference between `switch` and `pin` for more predictable manual account control
