@@ -8,6 +8,7 @@ const TEST_BINARY_SUPPORT_RELATIVE_PATH = path.join("codex-rs", "test-binary-sup
 const TEST_FALLBACK_PATCHES = [
   path.join("patches", "codex-hot-reload-tests.patch"),
   path.join("patches", "codex-hot-reload-tests-0.122.patch"),
+  path.join("patches", "codex-hot-reload-tests-0.124.patch"),
 ];
 
 const CLIENT_RUNTIME_REWRITES = [
@@ -110,6 +111,42 @@ fn auth_connection_key(auth: Option<&CodexAuth>) -> Option<AuthConnectionKey> {
             .provider
             .to_api_provider(auth.as_ref().map(CodexAuth::auth_mode))?;
         let api_auth = auth_provider_from_auth(auth.clone(), &self.state.provider)?;
+        Ok(CurrentClientSetup {
+            auth,
+            api_provider,
+            api_auth,
+            auth_connection_changed,
+        })
+    }
+`,
+      },
+      {
+        search: `    async fn current_client_setup(&self) -> Result<CurrentClientSetup> {
+        let auth = self.state.provider.auth().await;
+        let api_provider = self.state.provider.api_provider().await?;
+        let api_auth = self.state.provider.api_auth().await?;
+        Ok(CurrentClientSetup {
+            auth,
+            api_provider,
+            api_auth,
+        })
+    }
+`,
+        replacement: `    async fn current_client_setup(&self) -> Result<CurrentClientSetup> {
+        let auth_manager = self.state.provider.auth_manager();
+        let (auth, auth_connection_changed) = match auth_manager.as_ref() {
+            Some(manager) => {
+                let cached_before_reload = auth_connection_key(manager.auth_cached().as_ref());
+                manager.reload();
+                let auth = self.state.provider.auth().await;
+                let auth_connection_changed =
+                    cached_before_reload != auth_connection_key(auth.as_ref());
+                (auth, auth_connection_changed)
+            }
+            None => (self.state.provider.auth().await, false),
+        };
+        let api_provider = self.state.provider.api_provider().await?;
+        let api_auth = self.state.provider.api_auth().await?;
         Ok(CurrentClientSetup {
             auth,
             api_provider,
