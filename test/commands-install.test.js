@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { promises as fs } from "node:fs";
 
-import { commandInstall, commandStatus } from "../src/lib/commands.js";
+import { commandInstall, commandStatus, commandUpgrade } from "../src/lib/commands.js";
 import { appDirs, defaultManifestUrl } from "../src/lib/constants.js";
 import { createLocalManifestRecord, findManifestRecord, loadManifest } from "../src/lib/manifest.js";
 import { loadState, saveState } from "../src/lib/state.js";
@@ -224,6 +225,185 @@ test("status self-heals to the installed managed overlay when the cached manifes
   }
 });
 
+test("upgrade installs the newest supported managed upstream without touching global npm Codex", async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-multiaccount-upgrade-"));
+  try {
+    const context = {
+      cwd: tempRoot,
+      homeDir: tempRoot,
+      platform: "linux",
+      arch: "x64",
+      projectRoot: tempRoot,
+      execPath: process.execPath,
+    };
+    const dirs = appDirs(tempRoot);
+
+    const olderUpstream = "upstream-123";
+    const newestUpstream = "upstream-124";
+    const overlayPath = path.join(tempRoot, "overlay-codex");
+    await fs.writeFile(overlayPath, "patched-binary", { mode: 0o755 });
+
+    const manifestPath = path.join(tempRoot, "manifest.json");
+    await writeJson(manifestPath, {
+      schemaVersion: 1,
+      records: [
+        {
+          id: "0.123.0-linux-x64",
+          codexVersion: "0.123.0",
+          platform: "linux",
+          arch: "x64",
+          upstreamSha256: sha256Text(olderUpstream),
+          overlaySourcePath: overlayPath,
+          overlaySha256: await sha256File(overlayPath),
+        },
+        {
+          id: "0.124.0-linux-x64",
+          codexVersion: "0.124.0",
+          platform: "linux",
+          arch: "x64",
+          upstreamSha256: sha256Text(newestUpstream),
+          overlaySourcePath: overlayPath,
+          overlaySha256: await sha256File(overlayPath),
+        },
+      ],
+    });
+
+    await commandUpgrade(context, {
+      skipToolkitInstall: true,
+      manifest: manifestPath,
+      fetchVendorPackage: async ({ destinationRoot, target }) => {
+        const binaryPath = path.join(destinationRoot, "vendor", target.vendorTriple, "codex", "codex");
+        await fs.mkdir(path.dirname(binaryPath), { recursive: true });
+        await fs.writeFile(binaryPath, newestUpstream, { mode: 0o755 });
+      },
+    });
+
+    const state = await loadState(dirs.statePath);
+    assert.equal(state.currentRecordId, "0.124.0-linux-x64");
+    assert.equal(state.upstream.discoveryMethod, "managed-download");
+    assert.match(state.upstream.vendorBinaryPath, /upstreams[\\/]+0\.124\.0[\\/]+linux-x64/);
+    assert.equal(await fs.readFile(state.upstream.vendorBinaryPath, "utf8"), newestUpstream);
+
+    const { stdout } = await captureStdout(() => commandStatus(context));
+    assert.match(stdout, /supported: yes/);
+    assert.match(stdout, /0\.124\.0/);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("upgrade rejects a managed upstream download when the hash does not match the manifest", async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-multiaccount-upgrade-mismatch-"));
+  try {
+    const context = {
+      cwd: tempRoot,
+      homeDir: tempRoot,
+      platform: "linux",
+      arch: "x64",
+      projectRoot: tempRoot,
+      execPath: process.execPath,
+    };
+    const overlayPath = path.join(tempRoot, "overlay-codex");
+    await fs.writeFile(overlayPath, "patched-binary", { mode: 0o755 });
+
+    const manifestPath = path.join(tempRoot, "manifest.json");
+    await writeJson(manifestPath, {
+      schemaVersion: 1,
+      records: [
+        {
+          id: "0.124.0-linux-x64",
+          codexVersion: "0.124.0",
+          platform: "linux",
+          arch: "x64",
+          upstreamSha256: sha256Text("expected-upstream"),
+          overlaySourcePath: overlayPath,
+          overlaySha256: await sha256File(overlayPath),
+        },
+      ],
+    });
+
+    await assert.rejects(
+      () =>
+        commandUpgrade(context, {
+          skipToolkitInstall: true,
+          manifest: manifestPath,
+          fetchVendorPackage: async ({ destinationRoot, target }) => {
+            const binaryPath = path.join(destinationRoot, "vendor", target.vendorTriple, "codex", "codex");
+            await fs.mkdir(path.dirname(binaryPath), { recursive: true });
+            await fs.writeFile(binaryPath, "wrong-upstream", { mode: 0o755 });
+          },
+        }),
+      /managed upstream hash mismatch/,
+    );
+
+    const dirs = appDirs(tempRoot);
+    assert.equal(await loadState(dirs.statePath), null);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("status prefers an explicit installed upstream over global discovery", async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-multiaccount-explicit-status-"));
+  try {
+    const context = {
+      cwd: tempRoot,
+      homeDir: tempRoot,
+      platform: "linux",
+      arch: "x64",
+      projectRoot: tempRoot,
+      execPath: process.execPath,
+    };
+    const dirs = appDirs(tempRoot);
+    const upstreamPath = path.join(tempRoot, "explicit-upstream");
+    const overlayPath = path.join(tempRoot, "overlay-codex");
+    await fs.writeFile(upstreamPath, "explicit-upstream", { mode: 0o755 });
+    await fs.writeFile(overlayPath, "patched-binary", { mode: 0o755 });
+
+    const upstreamSha256 = await sha256File(upstreamPath);
+    const overlaySha256 = await sha256File(overlayPath);
+    await writeJson(dirs.manifestPath, {
+      schemaVersion: 1,
+      records: [
+        {
+          id: "explicit-record",
+          codexVersion: "0.124.0",
+          platform: "linux",
+          arch: "x64",
+          upstreamSha256,
+          overlaySourcePath: overlayPath,
+          overlaySha256,
+          managedOverlayPath: overlayPath,
+        },
+      ],
+    });
+    await saveState(dirs.statePath, {
+      installedAt: new Date().toISOString(),
+      managedBinDir: dirs.binDir,
+      manifestPath: dirs.manifestPath,
+      manifestSource: null,
+      currentRecordId: "explicit-record",
+      upstream: {
+        discoveryMethod: "explicit",
+        version: null,
+        vendorBinaryPath: upstreamPath,
+      },
+      lastKnownUpstreamSha256: upstreamSha256,
+      overlay: {
+        sourcePath: overlayPath,
+        sourceSha256: overlaySha256,
+        managedPath: overlayPath,
+      },
+    });
+
+    const { stdout } = await captureStdout(() => commandStatus(context));
+    assert.match(stdout, new RegExp(escapeRegExp(upstreamPath)));
+    assert.match(stdout, /supported: yes/);
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 function captureStdout(run) {
   let stdout = "";
   const originalWrite = process.stdout.write;
@@ -248,4 +428,12 @@ function captureStdout(run) {
         throw error;
       },
     );
+}
+
+function sha256Text(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

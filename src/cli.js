@@ -26,7 +26,7 @@ Commands:
   install [--overlay-path <path>] [--manifest <file-or-url>] [--path <upstream-binary>] [--force]
   status
   doctor
-  upgrade
+  upgrade [--manifest <file-or-url>]
   self-install
   repair
   uninstall
@@ -118,7 +118,7 @@ async function main() {
       await commandPin(context, parsed.positional);
       return;
     case "upgrade":
-      await commandUpgrade(context);
+      await commandUpgrade(context, parsed.options);
       return;
     case "self-install":
       await commandSelfInstall(context);

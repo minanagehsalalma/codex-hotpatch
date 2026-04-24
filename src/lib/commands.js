@@ -18,6 +18,11 @@ import { ensureManagedBinOnUserPath, removeManagedBinFromUserPath } from "./path
 import { deleteState, loadState, saveState } from "./state.js";
 import { removeManagedShims, writeManagedShims } from "./shims.js";
 import { installCurrentCheckout, installPublishedToolkit } from "./toolkit-install.js";
+import {
+  discoverStoredUpstream,
+  ensureManagedUpstreamForRecord,
+  selectLatestSupportedRecord,
+} from "./runtime-upgrade.js";
 import { ensureDir, equalsPath, pathExists, readJson, sha256File, writeJson } from "./util.js";
 
 function splitWindowsPathList(value) {
@@ -72,6 +77,7 @@ export async function commandInstall(context, options) {
   await migrateLegacyRuntime(dirs);
   await ensureDir(dirs.rootDir);
   await ensureDir(dirs.overlaysDir);
+  await ensureDir(dirs.upstreamsDir);
   await ensureDir(dirs.manifestsDir);
   const { state: installedState } = await loadInstalledRuntime(dirs);
 
@@ -141,35 +147,18 @@ export async function commandInstall(context, options) {
     manifestSource = null;
   }
 
-  const overlay = await ensureManagedOverlay(context, dirs, activeRecord);
-  const hydratedRecord = withManagedOverlayPath(activeRecord, overlay.managedOverlayPath, overlay.overlaySha256);
-  const manifestRecords = manifest.records.map((record) =>
-    record.id === activeRecord.id ? hydratedRecord : record,
-  );
-  await saveManifest(dirs.manifestPath, manifestRecords);
-
-  await writeManagedShims(context, dirs.binDir);
-  await ensureManagedBinOnUserPath(context, dirs.binDir, [dirs.legacy.binDir]);
-
-  const state = {
-    installedAt: new Date().toISOString(),
-    managedBinDir: dirs.binDir,
-    manifestPath: dirs.manifestPath,
+  const { hydratedRecord } = await completeRuntimeInstall(context, dirs, {
+    manifest,
     manifestSource,
-    currentRecordId: hydratedRecord.id,
+    activeRecord,
     upstream,
-    lastKnownUpstreamSha256: upstreamSha256,
-    overlay: {
-      sourcePath: hydratedRecord.overlaySourcePath ?? null,
-      sourceSha256: overlay.overlaySha256,
-      managedPath: overlay.managedOverlayPath,
-    },
-  };
-  await saveState(dirs.statePath, state);
+    upstreamSha256,
+    installedAt: new Date().toISOString(),
+  });
 
   process.stdout.write(`Installed multiaccount overlay for Codex ${upstream.version ?? "unknown"}.\n`);
   process.stdout.write(`Managed shim dir: ${dirs.binDir}\n`);
-  process.stdout.write(`Managed overlay: ${overlay.managedOverlayPath}\n`);
+  process.stdout.write(`Managed overlay: ${hydratedRecord.managedOverlayPath}\n`);
 }
 
 export async function commandStatus(context) {
@@ -324,9 +313,15 @@ export async function commandPin(context, authArgs) {
   );
 }
 
-export async function commandUpgrade(context) {
-  await installPublishedToolkit(context);
-  process.stdout.write("upgrade: complete\n");
+export async function commandUpgrade(context, options = {}) {
+  if (!options.skipToolkitInstall) {
+    await installPublishedToolkit(context);
+  }
+  const installed = await installLatestSupportedRuntime(context, options);
+  process.stdout.write(`upgrade: complete\n`);
+  process.stdout.write(`Codex runtime: ${installed.record.codexVersion}\n`);
+  process.stdout.write(`Managed upstream: ${installed.upstream.vendorBinaryPath}\n`);
+  process.stdout.write(`Managed overlay: ${installed.hydratedRecord.managedOverlayPath}\n`);
 }
 
 export async function commandSelfInstall(context) {
@@ -406,6 +401,42 @@ export async function commandLaunch(context, passthroughArgs) {
   await launchBinary(context, upstream, hydratedRecord.managedOverlayPath, passthroughArgs, [
     path.join(path.dirname(hydratedRecord.managedOverlayPath), "path"),
   ]);
+}
+
+export async function installLatestSupportedRuntime(context, options = {}) {
+  const dirs = appDirs(context.homeDir);
+  await migrateLegacyRuntime(dirs);
+  await ensureDir(dirs.rootDir);
+  await ensureDir(dirs.overlaysDir);
+  await ensureDir(dirs.upstreamsDir);
+  await ensureDir(dirs.manifestsDir);
+
+  const manifestSource = resolvePathOrUrlOption(context, options.manifest) ?? defaultManifestUrl();
+  const manifest = await loadManifest(manifestSource);
+  const activeRecord = selectLatestSupportedRecord(manifest, context.platform, context.arch);
+  if (!activeRecord) {
+    throw new Error(`no supported Codex runtime is published for ${context.platform}-${context.arch}`);
+  }
+
+  const upstream = await ensureManagedUpstreamForRecord(context, dirs, activeRecord, {
+    fetchVendorPackage: options.fetchVendorPackage,
+  });
+  const upstreamSha256 = await sha256File(upstream.vendorBinaryPath);
+  if (upstreamSha256 !== activeRecord.upstreamSha256) {
+    throw new Error(
+      `managed upstream hash mismatch for ${activeRecord.id}. Expected ${activeRecord.upstreamSha256}, got ${upstreamSha256}.`,
+    );
+  }
+
+  const installed = await completeRuntimeInstall(context, dirs, {
+    manifest,
+    manifestSource,
+    activeRecord,
+    upstream,
+    upstreamSha256,
+    installedAt: new Date().toISOString(),
+  });
+  return { ...installed, record: activeRecord, upstream };
 }
 
 async function launchBinary(context, upstream, executablePath, passthroughArgs, extraPathDirs) {
@@ -589,7 +620,47 @@ async function updateStateForRecord(dirs, state, upstream, upstreamSha256, recor
   await saveState(dirs.statePath, nextState);
 }
 
+async function completeRuntimeInstall(context, dirs, {
+  manifest,
+  manifestSource,
+  activeRecord,
+  upstream,
+  upstreamSha256,
+  installedAt,
+}) {
+  const overlay = await ensureManagedOverlay(context, dirs, activeRecord);
+  const hydratedRecord = withManagedOverlayPath(activeRecord, overlay.managedOverlayPath, overlay.overlaySha256);
+  const manifestRecords = manifest.records.map((record) =>
+    record.id === activeRecord.id ? hydratedRecord : record,
+  );
+  await saveManifest(dirs.manifestPath, manifestRecords);
+
+  await writeManagedShims(context, dirs.binDir);
+  await ensureManagedBinOnUserPath(context, dirs.binDir, [dirs.legacy.binDir]);
+
+  const state = {
+    installedAt,
+    managedBinDir: dirs.binDir,
+    manifestPath: dirs.manifestPath,
+    manifestSource,
+    currentRecordId: hydratedRecord.id,
+    upstream,
+    lastKnownUpstreamSha256: upstreamSha256,
+    overlay: {
+      sourcePath: hydratedRecord.overlaySourcePath ?? null,
+      sourceSha256: overlay.overlaySha256,
+      managedPath: overlay.managedOverlayPath,
+    },
+  };
+  await saveState(dirs.statePath, state);
+  return { hydratedRecord, manifestRecords, overlay, state };
+}
+
 async function discoverCurrentUpstream(context, state) {
+  const storedUpstream = await discoverStoredUpstream(context, state);
+  if (storedUpstream) {
+    return storedUpstream;
+  }
   try {
     return await discoverCodexInstall(context);
   } catch (error) {

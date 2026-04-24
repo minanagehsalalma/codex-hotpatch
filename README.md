@@ -32,9 +32,9 @@ That is the whole bet. It is not trying to be a fork of Codex, a custom backend,
 | Concern | This toolkit's contract |
 | --- | --- |
 | Credentials | It does not ask for your OpenAI password, proxy your prompts, or upload `auth.json` / `accounts/` anywhere. Auth switching works by managing the same local Codex auth files you already have under `~/.codex`. |
-| Filesystem writes | It writes only to `~/.codex-multiaccount` for shims, overlays, manifests, and state. It reads `~/.codex` because that is where Codex auth already lives. It does not patch the upstream vendor binary in place. |
-| Network access | Network use is narrow and explicit: fetch the configured manifest and download published overlays from GitHub Releases, or pull a newer toolkit package when you run `upgrade`. It does not sit in the middle of Codex API traffic. |
-| Updates | The managed runtime can refresh its manifest/overlay state automatically. The toolkit package does not silently self-update; users must reinstall, run `codex-multiaccount upgrade`, or `self-install` from a checkout. |
+| Filesystem writes | It writes only to `~/.codex-multiaccount` for shims, overlays, managed upstream binaries, manifests, and state. It reads `~/.codex` because that is where Codex auth already lives. It does not patch the upstream vendor binary in place. |
+| Network access | Network use is narrow and explicit: fetch the configured manifest, download published overlays from GitHub Releases, download the matching upstream Codex package for managed runtime upgrades, or pull a newer toolkit package when you run `upgrade`. It does not sit in the middle of Codex API traffic. |
+| Updates | `codex-multiaccount upgrade` refreshes the toolkit package and the managed Codex runtime together. The toolkit does not silently self-update in the background. |
 | Breakage | Overlay selection is hash-matched. If the installed upstream Codex binary is unknown, launch fails closed instead of trying a near match. |
 | Reversibility | `codex-multiaccount uninstall` removes the managed runtime and restores normal `codex` launch behavior. Your upstream Codex install and `~/.codex` auth data stay yours. |
 
@@ -89,11 +89,13 @@ That is the whole shape of the project: discover the real upstream binary, match
 npm install -g github:minanagehsalalma/codex-multiaccount-patcher
 ```
 
-3. Install the managed Codex shims and pull the latest validated manifest:
+3. Install or refresh the managed Codex runtime:
 
 ```bash
-codex-multiaccount install
+codex-multiaccount upgrade
 ```
+
+This updates the toolkit package, downloads the newest supported upstream Codex binary into `~/.codex-multiaccount/upstreams`, hydrates the matching overlay, and writes the managed shims. It does not overwrite the global `@openai/codex` vendor binary.
 
 4. Check the patched Codex runtime:
 
@@ -126,7 +128,7 @@ codex-multiaccount pin work
 
 That command disables auto-switch first, performs the account switch, and leaves auto-switch off so the manual selection does not get immediately overturned by the background rollover logic. The same helper is also available as `codex-auth pin`.
 
-7. Refresh the toolkit when a new published build lands:
+7. Refresh the toolkit and managed Codex runtime when a new published build lands:
 
 ```bash
 codex-multiaccount upgrade
@@ -138,7 +140,7 @@ Maintainers working from a local checkout can refresh the global install from th
 codex-multiaccount self-install
 ```
 
-Published installs do not auto-refresh every time the repo changes. The toolkit upgrades the managed Codex runtime automatically, but the toolkit package itself only changes when you reinstall or run `upgrade`.
+Published installs do not auto-refresh every time the repo changes. The toolkit package and managed Codex runtime update together when you run `upgrade`.
 
 The default maintenance lane still targets the normal `openai/codex` semver/npm shape. Manual publish runs can now also target forked GitHub release assets, including prereleases with non-semver tags, by passing `upstream_repo`, `upstream_source=github-release`, and `include_prereleases=true` into the workflow dispatch form. If the fork only ships prebuilt assets and the source tree does not cleanly rebuild in CI, use `build_mode=prebuilt-only` to publish those fetched assets directly as the overlay payload for the supported platforms on that release.
 
@@ -180,7 +182,7 @@ sequenceDiagram
 <details>
 <summary><strong>What install writes to the machine</strong></summary>
 
-The patcher creates a managed home at `~/.codex-multiaccount`, stores overlay binaries under `overlays/`, writes the active manifest under `manifests/`, and places shims under `bin/`. It does not mutate the vendor Codex binary in place.
+The patcher creates a managed home at `~/.codex-multiaccount`, stores overlay binaries under `overlays/`, managed upstream Codex packages under `upstreams/`, writes the active manifest under `manifests/`, and places shims under `bin/`. It does not mutate the vendor Codex binary in place.
 
 </details>
 
@@ -237,7 +239,7 @@ The green path is now zero-touch: detect the latest upstream Codex release, skip
 | `codex-multiaccount install [--overlay-path <path>] [--manifest <file-or-url>] [--path <upstream-binary>] [--force]` | Install shims, discover upstream Codex, and materialize the matching overlay |
 | `codex-multiaccount status` | Show upstream hash, active overlay, manifest source, and install health |
 | `codex-multiaccount doctor` | Check both the patch runtime and auth runtime in one report |
-| `codex-multiaccount upgrade` | Replace the global toolkit install with the latest published build from GitHub |
+| `codex-multiaccount upgrade [--manifest <file-or-url>]` | Replace the global toolkit install, download the latest supported upstream runtime, and install the matching overlay |
 | `codex-multiaccount self-install` | Pack the current checkout and install it globally as a self-contained package |
 | `codex-multiaccount repair` | Re-resolve the manifest and refresh the managed runtime |
 | `codex-multiaccount uninstall` | Remove the managed runtime and restore normal `codex` launch behavior |
