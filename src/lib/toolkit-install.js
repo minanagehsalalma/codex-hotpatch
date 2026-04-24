@@ -46,6 +46,7 @@ async function runNpm(context, args, options = {}) {
 }
 
 export async function installPublishedToolkit(context) {
+  await stopBlockingWindowsAuthProcesses(context);
   const result = await runNpm(context, ["install", "-g", publishedInstallSpec(), "--force"], {
     stdio: "inherit",
   });
@@ -66,6 +67,7 @@ export async function installCurrentCheckout(context) {
 
     const tarballName = parsePackJson(packResult.stdout);
     const tarballPath = path.join(tempDir, tarballName);
+    await stopBlockingWindowsAuthProcesses(context);
     const installResult = await runNpm(context, ["install", "-g", tarballPath, "--force"], {
       stdio: "inherit",
     });
@@ -80,4 +82,38 @@ export async function installCurrentCheckout(context) {
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
+}
+
+export async function stopBlockingWindowsAuthProcesses(context) {
+  if (context.platform !== "win32") {
+    return { skipped: true, stopped: [] };
+  }
+
+  const powershellPath = path.join(
+    process.env.SystemRoot ?? "C:\\Windows",
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  const script = [
+    "$needles = @('codex-multiaccount-patcher', 'codex-auth-working-snapshot')",
+    "Get-Process -Name 'codex-auth-auto','codex-auth' -ErrorAction SilentlyContinue |",
+    "  Where-Object {",
+    "    $path = $_.Path",
+    "    $path -and ($needles | Where-Object { $path -like \"*$_*\" })",
+    "  } |",
+    "  ForEach-Object {",
+    "    Stop-Process -Id $_.Id -Force -ErrorAction Stop",
+    "    \"$($_.ProcessName):$($_.Id)\"",
+    "  }",
+  ].join("\n");
+  const result = await runCommand(powershellPath, ["-NoLogo", "-NoProfile", "-Command", script]);
+  if (result.code !== 0) {
+    throw new Error(`failed to stop blocking auth helper processes: ${result.stderr || result.stdout}`.trim());
+  }
+  return {
+    skipped: false,
+    stopped: result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
+  };
 }

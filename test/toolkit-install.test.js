@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { npmCommand, parsePackJson, publishedInstallSpec } from "../src/lib/toolkit-install.js";
+import {
+  npmCommand,
+  parsePackJson,
+  publishedInstallSpec,
+  stopBlockingWindowsAuthProcesses,
+} from "../src/lib/toolkit-install.js";
 
 test("publishedInstallSpec points at the GitHub repo", () => {
   assert.equal(publishedInstallSpec(), "github:minanagehsalalma/codex-multiaccount-patcher");
@@ -19,4 +24,11 @@ test("parsePackJson returns the tarball filename", () => {
 
 test("parsePackJson rejects malformed output", () => {
   assert.throws(() => parsePackJson("{}"), /tarball filename/);
+});
+
+test("stopBlockingWindowsAuthProcesses is a no-op outside Windows contexts", async () => {
+  assert.deepEqual(await stopBlockingWindowsAuthProcesses({ platform: "linux" }), {
+    skipped: true,
+    stopped: [],
+  });
 });
