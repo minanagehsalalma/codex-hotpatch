@@ -104,6 +104,8 @@ codex-multiaccount status
 codex-multiaccount doctor
 ```
 
+If you want the lowest-risk first verification step, start with `doctor`. It checks both `~/.codex-multiaccount` and `~/.codex` together so you can spot install or auth-path problems before you start switching accounts.
+
 5. Check the bundled auth toolkit:
 
 ```bash
