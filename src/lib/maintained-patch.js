@@ -6,9 +6,11 @@ const CLIENT_RELATIVE_PATH = path.join("codex-rs", "core", "src", "client.rs");
 const TEST_SUITE_MOD_RELATIVE_PATH = path.join("codex-rs", "core", "tests", "suite", "mod.rs");
 const TEST_BINARY_SUPPORT_RELATIVE_PATH = path.join("codex-rs", "test-binary-support", "lib.rs");
 const TEST_FALLBACK_PATCHES = [
-  path.join("patches", "codex-hot-reload-tests.patch"),
-  path.join("patches", "codex-hot-reload-tests-0.122.patch"),
+  path.join("patches", "codex-hot-reload-tests-0.129.patch"),
+  path.join("patches", "codex-hot-reload-tests-0.128.patch"),
   path.join("patches", "codex-hot-reload-tests-0.124.patch"),
+  path.join("patches", "codex-hot-reload-tests-0.122.patch"),
+  path.join("patches", "codex-hot-reload-tests.patch"),
 ];
 
 const CLIENT_RUNTIME_REWRITES = [
@@ -98,7 +100,7 @@ fn auth_connection_key(auth: Option<&CodexAuth>) -> Option<AuthConnectionKey> {
         let (auth, auth_connection_changed) = match self.state.auth_manager.as_ref() {
             Some(manager) => {
                 let cached_before_reload = auth_connection_key(manager.auth_cached().as_ref());
-                manager.reload();
+                manager.reload().await;
                 let auth = manager.auth().await;
                 let auth_connection_changed =
                     cached_before_reload != auth_connection_key(auth.as_ref());
@@ -137,7 +139,7 @@ fn auth_connection_key(auth: Option<&CodexAuth>) -> Option<AuthConnectionKey> {
         let (auth, auth_connection_changed) = match auth_manager.as_ref() {
             Some(manager) => {
                 let cached_before_reload = auth_connection_key(manager.auth_cached().as_ref());
-                manager.reload();
+                manager.reload().await;
                 let auth = self.state.provider.auth().await;
                 let auth_connection_changed =
                     cached_before_reload != auth_connection_key(auth.as_ref());
@@ -212,7 +214,7 @@ fn auth_connection_key(auth: Option<&CodexAuth>) -> Option<AuthConnectionKey> {
         let (auth, auth_connection_changed) = match auth_manager.as_ref() {
             Some(manager) => {
                 let cached_before_reload = auth_connection_key(manager.auth_cached().as_ref());
-                manager.reload();
+                manager.reload().await;
                 let auth = self.state.provider.auth().await;
                 let auth_connection_changed =
                     cached_before_reload != auth_connection_key(auth.as_ref());
