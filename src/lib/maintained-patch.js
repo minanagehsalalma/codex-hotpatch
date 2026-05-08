@@ -6,9 +6,11 @@ const CLIENT_RELATIVE_PATH = path.join("codex-rs", "core", "src", "client.rs");
 const TEST_SUITE_MOD_RELATIVE_PATH = path.join("codex-rs", "core", "tests", "suite", "mod.rs");
 const TEST_BINARY_SUPPORT_RELATIVE_PATH = path.join("codex-rs", "test-binary-support", "lib.rs");
 const TEST_FALLBACK_PATCHES = [
-  path.join("patches", "codex-hot-reload-tests.patch"),
-  path.join("patches", "codex-hot-reload-tests-0.122.patch"),
+  path.join("patches", "codex-hot-reload-tests-0.129.patch"),
+  path.join("patches", "codex-hot-reload-tests-0.128.patch"),
   path.join("patches", "codex-hot-reload-tests-0.124.patch"),
+  path.join("patches", "codex-hot-reload-tests-0.122.patch"),
+  path.join("patches", "codex-hot-reload-tests.patch"),
 ];
 
 const CLIENT_RUNTIME_REWRITES = [
